@@ -28,8 +28,8 @@ app.include_router(user.router)
 
 def create_admin_if_needed():
     """Create admin user from env vars if it doesn't exist."""
-    admin_email = os.getenv("ADMIN_EMAIL")
-    admin_password = os.getenv("ADMIN_PASSWORD")
+    admin_email = os.getenv("SUPERADMIN_EMAIL")
+    admin_password = os.getenv("SUPERADMIN_PSW")
 
     if not admin_email or not admin_password:
         return
@@ -51,7 +51,7 @@ def create_admin_if_needed():
         hashed = pwd_context.hash(admin_password)
         cur.execute(
             "INSERT INTO users (name, email, password_hash, plan) VALUES (%s, %s, %s, %s)",
-            ("Admin", admin_email, hashed, "admin"),
+            ("Super Admin", admin_email, hashed, "superadmin"),
         )
         conn.commit()
         cur.close()
