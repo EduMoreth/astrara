@@ -11,12 +11,13 @@ interface ChartRequest {
   country?: string
 }
 
-interface ChartResponse {
-  svg: string
+export interface ChartResponse {
   positions: Record<
     string,
     { sign: string; deg: number }
   >
+  houses: Array<{ sign: string; deg: number }>
+  aspects: Array<{ p1: string; p2: string; aspect: string; orbit: number }>
 }
 
 interface AuthResponse {

@@ -8,17 +8,11 @@ import StarBackground from '@/components/StarBackground'
 import BirthForm from '@/components/BirthForm'
 import ChartWheel from '@/components/ChartWheel'
 import PlanetTable from '@/components/PlanetTable'
-import { generateChart } from '@/lib/api'
-
-interface ChartResult {
-  positions: Record<string, { sign: string; deg: number }>
-  houses: Array<{ sign: string; deg: number }>
-  aspects: Array<{ p1: string; p2: string; aspect: string; orbit: number }>
-}
+import { generateChart, ChartResponse } from '@/lib/api'
 
 export default function ChartPage() {
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<ChartResult | null>(null)
+  const [result, setResult] = useState<ChartResponse | null>(null)
 
   async function handleSubmit(data: {
     name: string
@@ -33,7 +27,7 @@ export default function ChartPage() {
     setLoading(true)
     try {
       const res = await generateChart(data)
-      setResult(res as ChartResult)
+      setResult(res as ChartResponse)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao gerar o mapa'
       toast.error(message)
