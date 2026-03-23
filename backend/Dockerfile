@@ -2,6 +2,8 @@ FROM python:3.12-slim
 
 # Install system dependencies required by swisseph/kerykeion
 RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3-dev \
     libsqlite3-dev \
     sqlite3 \
     gcc \
