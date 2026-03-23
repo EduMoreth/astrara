@@ -19,20 +19,83 @@ interface Props {
   loading: boolean
 }
 
+const COUNTRIES = [
+  'Brasil',
+  'África do Sul',
+  'Alemanha',
+  'Angola',
+  'Argentina',
+  'Austrália',
+  'Bolívia',
+  'Canadá',
+  'Chile',
+  'China',
+  'Colômbia',
+  'Coreia do Sul',
+  'Cuba',
+  'Equador',
+  'Espanha',
+  'Estados Unidos',
+  'França',
+  'Índia',
+  'Irlanda',
+  'Israel',
+  'Itália',
+  'Japão',
+  'México',
+  'Moçambique',
+  'Nigéria',
+  'Noruega',
+  'Nova Zelândia',
+  'Paraguai',
+  'Peru',
+  'Portugal',
+  'Reino Unido',
+  'Rússia',
+  'Suécia',
+  'Suíça',
+  'Turquia',
+  'Uruguai',
+  'Venezuela',
+]
+
+const MONTHS = [
+  { value: 1, label: 'Janeiro' },
+  { value: 2, label: 'Fevereiro' },
+  { value: 3, label: 'Março' },
+  { value: 4, label: 'Abril' },
+  { value: 5, label: 'Maio' },
+  { value: 6, label: 'Junho' },
+  { value: 7, label: 'Julho' },
+  { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Setembro' },
+  { value: 10, label: 'Outubro' },
+  { value: 11, label: 'Novembro' },
+  { value: 12, label: 'Dezembro' },
+]
+
 export default function BirthForm({ onSubmit, loading }: Props) {
   const [name, setName] = useState('')
-  const [birthDate, setBirthDate] = useState('')
+  const [birthDay, setBirthDay] = useState('')
+  const [birthMonth, setBirthMonth] = useState('')
+  const [birthYear, setBirthYear] = useState('')
   const [birthTime, setBirthTime] = useState('')
   const [unknownTime, setUnknownTime] = useState(false)
   const [city, setCity] = useState('')
-  const [country, setCountry] = useState('')
+  const [country, setCountry] = useState('Brasil')
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
 
-    if (!name || !birthDate || !city) return
+    if (!name || !birthDay || !birthMonth || !birthYear || !city) return
 
-    const [year, month, day] = birthDate.split('-').map(Number)
+    const day = parseInt(birthDay, 10)
+    const month = parseInt(birthMonth, 10)
+    const year = parseInt(birthYear, 10)
+
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return
+    if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900 || year > 2100) return
+
     let hour = 12
     let minute = 0
 
@@ -44,6 +107,8 @@ export default function BirthForm({ onSubmit, loading }: Props) {
 
     onSubmit({ name, year, month, day, hour, minute, city, country })
   }
+
+  const currentYear = new Date().getFullYear()
 
   return (
     <motion.form
@@ -71,16 +136,50 @@ export default function BirthForm({ onSubmit, loading }: Props) {
           />
         </div>
 
-        {/* Birth date */}
+        {/* Birth date - dd/mm/yyyy */}
         <div>
           <label className="block text-sm text-muted mb-2">Data de nascimento</label>
-          <input
-            type="date"
-            className="input-field"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            required
-          />
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <input
+                type="number"
+                className="input-field text-center"
+                placeholder="Dia"
+                min={1}
+                max={31}
+                value={birthDay}
+                onChange={(e) => setBirthDay(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <select
+                className="input-field text-center"
+                value={birthMonth}
+                onChange={(e) => setBirthMonth(e.target.value)}
+                required
+              >
+                <option value="">Mês</option>
+                {MONTHS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <input
+                type="number"
+                className="input-field text-center"
+                placeholder="Ano"
+                min={1900}
+                max={currentYear}
+                value={birthYear}
+                onChange={(e) => setBirthYear(e.target.value)}
+                required
+              />
+            </div>
+          </div>
         </div>
 
         {/* Birth time */}
@@ -104,30 +203,32 @@ export default function BirthForm({ onSubmit, loading }: Props) {
           </label>
         </div>
 
+        {/* Country - BEFORE city */}
+        <div>
+          <label className="block text-sm text-muted mb-2">País</label>
+          <select
+            className="input-field"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+          >
+            {COUNTRIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* City */}
         <div>
           <label className="block text-sm text-muted mb-2">Cidade de nascimento</label>
           <input
             type="text"
             className="input-field"
-            placeholder="Ex: Sao Paulo, Brasil"
+            placeholder="Ex: São Paulo"
             value={city}
             onChange={(e) => setCity(e.target.value)}
             required
-          />
-        </div>
-
-        {/* Country */}
-        <div>
-          <label className="block text-sm text-muted mb-2">
-            Pais <span className="text-muted/50">(opcional)</span>
-          </label>
-          <input
-            type="text"
-            className="input-field"
-            placeholder="Ex: Brasil"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
           />
         </div>
       </div>
