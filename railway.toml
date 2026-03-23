@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[[services]]
+name = "astrara-frontend"
+source = "frontend"
+
+[[services]]
+name = "astrara-backend"
+source = "backend"
