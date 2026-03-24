@@ -16,26 +16,26 @@ const fadeUp = {
 const features = [
   {
     icon: '\uD83C\uDF19',
-    title: 'Calculo Preciso',
-    desc: 'Swiss Ephemeris, o mesmo motor usado pelos melhores astrologos do mundo.',
+    title: 'C\u00e1lculo Preciso',
+    desc: 'Swiss Ephemeris, o mesmo motor usado pelos melhores astr\u00f3logos do mundo.',
   },
   {
     icon: '\u2728',
     title: 'Design Celestial',
-    desc: 'Sua mandala gerada em alta resolucao para salvar e compartilhar.',
+    desc: 'Sua mandala gerada em alta resolu\u00e7\u00e3o para salvar e compartilhar.',
   },
   {
     icon: '\uD83D\uDD2E',
-    title: 'Interpretacao com IA',
-    desc: 'Analise profunda de cada planeta, casa e aspecto do seu mapa.',
+    title: 'Interpreta\u00e7\u00e3o com IA',
+    desc: 'An\u00e1lise profunda de cada planeta, casa e aspecto do seu mapa.',
   },
 ]
 
 const steps = [
   'Informe data, hora e cidade de nascimento',
-  'Seu mapa e calculado instantaneamente',
-  'Receba sua mandala e posicoes astrologicas',
-  'Desbloqueie a interpretacao completa com IA',
+  'Seu mapa \u00e9 calculado instantaneamente',
+  'Receba sua mandala e posi\u00e7\u00f5es astrol\u00f3gicas',
+  'Desbloqueie a interpreta\u00e7\u00e3o completa com IA',
 ]
 
 export default function LandingPage() {
@@ -68,7 +68,7 @@ export default function LandingPage() {
         >
           Seu mapa astral,
           <br />
-          <span className="text-gradient-gold font-medium">revelado com precisao.</span>
+          <span className="text-gradient-gold font-medium">revelado com precis&#227;o.</span>
         </motion.h1>
 
         <motion.p
@@ -79,7 +79,7 @@ export default function LandingPage() {
         >
           Calcule seu mapa natal gratuitamente.
           <br />
-          Interpretacoes profundas com inteligencia artificial.
+          Interpreta&#231;&#245;es profundas com intelig&#234;ncia artificial.
         </motion.p>
 
         <motion.div
@@ -243,7 +243,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-6 text-sm text-muted">
             <a href="/privacidade" className="hover:text-stardust transition-colors">
-              Politica de Privacidade
+              Pol&#237;tica de Privacidade
             </a>
             <span className="text-gold/20">·</span>
             <a href="/termos" className="hover:text-stardust transition-colors">
