@@ -85,55 +85,55 @@ export default function ChartPage() {
     }
 
     const token = localStorage.getItem('astrara_token')
-
-    // STEP 2: Check if user already has credits
-    try {
-      const creditsRes = await fetch(`${API_URL}/user/credits`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-      if (creditsRes.ok) {
-        const creditsData = await creditsRes.json()
-        if (creditsData.credits_balance > 0) {
-          // User has credits — go straight to PDF download!
-          toast.success('Voce tem creditos! Gerando sua interpretacao...')
-          setPaidRecently(true)
-          return
-        }
-      }
-    } catch {
-      // If credits check fails, proceed to checkout
+    if (!token) {
+      toast.error('Sessao expirada. Faca login novamente.')
+      router.push('/auth/login')
+      return
     }
 
-    // STEP 3: No credits — check if user has a completed purchase
+    // STEP 2: Check access via single backend endpoint
     try {
-      const purchaseRes = await fetch(`${API_URL}/user/has-purchase`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const accessRes = await fetch(`${API_URL}/chart/check-interpretation-access`, {
+        headers: { Authorization: `Bearer ${token}` },
       })
-      if (purchaseRes.ok) {
-        const purchaseData = await purchaseRes.json()
-        if (purchaseData.has_purchase) {
-          toast.success('Voce ja comprou! Gerando sua interpretacao...')
-          setPaidRecently(true)
-          return
-        }
+
+      if (!accessRes.ok) {
+        console.error('Access check failed:', accessRes.status)
+        toast.error('Erro ao verificar acesso. Tente novamente.')
+        return
       }
-    } catch {
-      // Continue to checkout
+
+      const access = await accessRes.json()
+      console.log('Access check result:', access)
+
+      if (access.has_access) {
+        // User has credits or purchase — show PDF download directly!
+        if (access.reason === 'has_credits') {
+          toast.success(`Voce tem ${access.credits} credito(s)! Gerando interpretacao...`)
+        } else {
+          toast.success('Interpretacao desbloqueada! Gerando PDF...')
+        }
+        setPaidRecently(true)
+        return
+      }
+    } catch (err) {
+      console.error('Access check error:', err)
+      toast.error('Erro ao verificar creditos. Tente novamente.')
+      return
     }
 
-    // STEP 4: Must have a product configured
+    // STEP 3: No access — redirect to Stripe checkout
     if (!interpProduct?.id) {
       toast.error('Produto de interpretacao nao configurado. Contate o suporte.')
       return
     }
 
-    // STEP 5: No credits, no purchase — redirect to Stripe checkout
     try {
       const res = await fetch(`${API_URL}/checkout/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ product_id: interpProduct.id }),
       })
@@ -290,9 +290,53 @@ export default function ChartPage() {
                 {/* Chart wheel */}
                 <div>
                   <ChartWheel positions={result.positions} houses={result.houses} aspects={result.aspects} />
-                  <div className="flex justify-center mt-6">
-                    <button onClick={() => toast.success('Funcionalidade em breve!')} className="btn-secondary text-sm">
-                      Salvar mandala
+                  <div className="flex justify-center gap-3 mt-6">
+                    <button
+                      onClick={() => {
+                        const svgEl = document.querySelector('.chart-wheel-svg')
+                        if (!svgEl) { toast.error('Mandala nao encontrada'); return }
+                        const svgData = new XMLSerializer().serializeToString(svgEl)
+                        const blob = new Blob([svgData], { type: 'image/svg+xml' })
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = 'astrara-mandala.svg'
+                        a.click()
+                        URL.revokeObjectURL(url)
+                        toast.success('Mandala salva!')
+                      }}
+                      className="btn-secondary text-sm"
+                    >
+                      Salvar SVG
+                    </button>
+                    <button
+                      onClick={() => {
+                        const svgEl = document.querySelector('.chart-wheel-svg') as SVGSVGElement
+                        if (!svgEl) { toast.error('Mandala nao encontrada'); return }
+                        const svgData = new XMLSerializer().serializeToString(svgEl)
+                        const canvas = document.createElement('canvas')
+                        canvas.width = 1200
+                        canvas.height = 1200
+                        const ctx = canvas.getContext('2d')
+                        if (!ctx) return
+                        // Dark background
+                        ctx.fillStyle = '#0A0A0F'
+                        ctx.fillRect(0, 0, 1200, 1200)
+                        const img = new Image()
+                        img.onload = () => {
+                          ctx.drawImage(img, 0, 0, 1200, 1200)
+                          const pngUrl = canvas.toDataURL('image/png')
+                          const a = document.createElement('a')
+                          a.href = pngUrl
+                          a.download = 'astrara-mandala.png'
+                          a.click()
+                          toast.success('Mandala salva como PNG!')
+                        }
+                        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
+                      }}
+                      className="btn-secondary text-sm"
+                    >
+                      Salvar PNG
                     </button>
                   </div>
                 </div>

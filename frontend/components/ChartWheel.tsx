@@ -161,7 +161,7 @@ export default function ChartWheel({ positions, houses, aspects }: Props) {
       {/* Glow */}
       <div className="absolute inset-0 rounded-full bg-violet/10 blur-[80px] -z-10" />
 
-      <svg viewBox="0 0 600 600" className="w-full max-w-xl mx-auto drop-shadow-2xl">
+      <svg viewBox="0 0 600 600" className="chart-wheel-svg w-full max-w-xl mx-auto drop-shadow-2xl">
         <defs>
           <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="rgba(18,18,26,0.95)" />

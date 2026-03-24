@@ -157,6 +157,43 @@ async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = H
     )
 
 
+@router.get("/check-interpretation-access")
+async def check_interpretation_access(authorization: Optional[str] = Header(None)):
+    """Check if user can access interpretation (has credits or purchase).
+    Returns: { has_access: bool, credits: int, reason: str }
+    """
+    user = get_optional_user(authorization)
+    if not user:
+        return {"has_access": False, "credits": 0, "reason": "not_logged_in"}
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Check credits
+    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user["sub"],))
+    credits_row = cur.fetchone()
+    credits = credits_row["credits_balance"] if credits_row else 0
+
+    if credits > 0:
+        cur.close()
+        conn.close()
+        return {"has_access": True, "credits": credits, "reason": "has_credits"}
+
+    # Check purchases
+    cur.execute("""
+        SELECT id FROM purchases WHERE user_id = %s AND status = 'completed' LIMIT 1
+    """, (user["sub"],))
+    has_purchase = cur.fetchone() is not None
+
+    cur.close()
+    conn.close()
+
+    if has_purchase:
+        return {"has_access": True, "credits": 0, "reason": "has_purchase"}
+
+    return {"has_access": False, "credits": 0, "reason": "no_credits"}
+
+
 class PdfRequest(BaseModel):
     positions: dict
     name: str = "Meu Mapa Astral"
