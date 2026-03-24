@@ -37,6 +37,17 @@ export default function ChartPage() {
       .then(setInterpProduct)
       .catch(() => {})
 
+    // Check if coming from dashboard with auto-generate flag
+    const autoGen = sessionStorage.getItem('astrara_auto_generate')
+    if (autoGen) {
+      sessionStorage.removeItem('astrara_auto_generate')
+      try {
+        const formData = JSON.parse(autoGen)
+        handleSubmit(formData)
+      } catch { /* ignore */ }
+      return
+    }
+
     // Restore chart result from sessionStorage (survives auth/payment redirects)
     const saved = sessionStorage.getItem('astrara_chart_result')
     if (saved) {
