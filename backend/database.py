@@ -216,6 +216,23 @@ def init_db():
         );
     """)
 
+    # ── Instagram Posts ──────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS instagram_posts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            post_date DATE NOT NULL UNIQUE,
+            horoscope_text TEXT,
+            transits_text TEXT,
+            image_path VARCHAR(255),
+            instagram_media_id VARCHAR(255),
+            instagram_permalink VARCHAR(255),
+            status VARCHAR(30) DEFAULT 'pending',
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            published_at TIMESTAMP
+        );
+    """)
+
     cur.execute("""
         INSERT INTO system_config (key, value, description) VALUES
         ('ai_model', 'claude-sonnet-4-6', 'Modelo Anthropic utilizado nas interpretacoes'),

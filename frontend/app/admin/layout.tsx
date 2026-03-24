@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: '/admin/tickets', label: 'Tickets', icon: '🎫' },
   { href: '/admin/reports', label: 'Relatorios', icon: '📊' },
   { href: '/admin/charts', label: 'Mapas', icon: '🔮' },
+  { href: '/admin/instagram', label: 'Instagram', icon: '📸' },
   { href: '/admin/config', label: 'Config', icon: '⚙️' },
   { href: '/admin/logs', label: 'Logs', icon: '📋' },
 ]

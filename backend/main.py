@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from database import init_db, get_connection
 from routers import auth, chart, user, admin, checkout, support
@@ -123,6 +124,11 @@ def seed_default_products():
         print(f"Warning: Could not seed products: {e}")
 
 
+# Serve temp images for Instagram Meta API
+os.makedirs("/tmp/astrara_posts", exist_ok=True)
+app.mount("/media/temp", StaticFiles(directory="/tmp/astrara_posts"), name="temp_media")
+
+
 @app.on_event("startup")
 async def startup():
     try:
@@ -132,6 +138,14 @@ async def startup():
     except Exception as e:
         print(f"Warning: Could not initialize database: {e}")
         print("Running without database connection.")
+
+    # Start Instagram scheduler
+    try:
+        from scheduler import start_scheduler
+        start_scheduler()
+        print("Instagram scheduler started (daily at 7am Brasilia)")
+    except Exception as e:
+        print(f"Warning: Could not start scheduler: {e}")
 
 
 @app.get("/")

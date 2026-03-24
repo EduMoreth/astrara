@@ -1151,3 +1151,58 @@ async def list_emails(page: int = 1, limit: int = 20, admin: str = Depends(verif
         "page": page,
         "pages": (total + limit - 1) // limit,
     }
+
+
+# ── Instagram Posts ──────────────────────────────────────────
+
+@router.get("/instagram/posts")
+async def list_instagram_posts(page: int = 1, limit: int = 20,
+                               admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+    offset = (page - 1) * limit
+    cur.execute("""
+        SELECT * FROM instagram_posts ORDER BY post_date DESC LIMIT %s OFFSET %s
+    """, (limit, offset))
+    posts = cur.fetchall()
+    cur.execute("SELECT COUNT(*) as total FROM instagram_posts")
+    total = cur.fetchone()["total"]
+    cur.close()
+    conn.close()
+    return {
+        "posts": [{**p, "id": str(p["id"]), "post_date": str(p["post_date"])} for p in posts],
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit,
+    }
+
+
+@router.post("/instagram/posts/trigger")
+async def trigger_instagram_post(request: Request, admin: str = Depends(verify_admin_token)):
+    """Manually trigger the daily Instagram post."""
+    from services.daily_post_orchestrator import run_daily_instagram_post
+    from datetime import date as date_type
+
+    body = await request.json()
+    target_str = body.get("date", str(date_type.today()))
+    target = date_type.fromisoformat(target_str)
+
+    result = run_daily_instagram_post(target)
+
+    log_action(admin, "trigger_instagram_post", "instagram", target_str,
+               result, ip=request.client.host if request.client else None)
+
+    return {"success": True, **result}
+
+
+@router.get("/instagram/posts/{post_date}")
+async def get_instagram_post(post_date: str, admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM instagram_posts WHERE post_date = %s", (post_date,))
+    post = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post nao encontrado")
+    return {**post, "id": str(post["id"]), "post_date": str(post["post_date"])}
