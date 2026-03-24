@@ -21,48 +21,65 @@ COUNTRY_CODES = {
 }
 
 
-def search_cities(query: str, country: str | None = None, limit: int = 5) -> list:
+def search_cities(query: str, country: str | None = None, limit: int = 8) -> list:
     """Search for cities matching query. Returns multiple results for autocomplete.
-    Uses structured query to avoid returning country-level results."""
+    Combines structured + free-text search for maximum coverage."""
     geolocator = Nominatim(user_agent="astrara-astrology-v2")
 
-    # Get country code for better results
     country_code = COUNTRY_CODES.get(country, "") if country else ""
+    all_results = []
 
     try:
-        # Use structured query: city + countrycodes parameter
-        # This is MUCH more accurate than free-text search
-        results = geolocator.geocode(
+        # Strategy 1: Structured query (most accurate)
+        results1 = geolocator.geocode(
             query={"city": query},
             exactly_one=False,
-            limit=limit * 2,  # fetch more, filter later
+            limit=10,
             language="pt",
             timeout=10,
             addressdetails=True,
             country_codes=country_code.lower() if country_code else None,
         )
+        if results1:
+            all_results.extend(results1)
 
-        # If structured query returns nothing, try free-text with country
-        if not results:
-            search_text = f"{query}, {country}" if country else query
-            results = geolocator.geocode(
-                search_text,
+        # Strategy 2: Free-text with country (catches more matches)
+        search_text = f"{query}, {country}" if country else query
+        results2 = geolocator.geocode(
+            search_text,
+            exactly_one=False,
+            limit=10,
+            language="pt",
+            timeout=10,
+            addressdetails=True,
+        )
+        if results2:
+            all_results.extend(results2)
+
+        # Strategy 3: Just the query with country code filter
+        if country_code and not all_results:
+            results3 = geolocator.geocode(
+                query,
                 exactly_one=False,
-                limit=limit * 2,
+                limit=10,
                 language="pt",
                 timeout=10,
                 addressdetails=True,
+                country_codes=country_code.lower(),
             )
+            if results3:
+                all_results.extend(results3)
+
     except GeocoderTimedOut:
         return []
 
-    if not results:
+    if not all_results:
         return []
 
     cities = []
     seen = set()
 
-    for loc in results:
+    for loc in all_results:
         addr = loc.raw.get("address", {})
         osm_type = loc.raw.get("type", "")
         osm_class = loc.raw.get("class", "")

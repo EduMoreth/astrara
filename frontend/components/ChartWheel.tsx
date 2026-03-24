@@ -117,7 +117,7 @@ export default function ChartWheel({ positions, houses, aspects }: Props) {
   const innerR = 215
   const planetR = 175
   const houseNumR = 135
-  const aspectR = 110 // radius for aspect lines (inside house numbers)
+  const aspectR = 155 // radius for aspect lines (closer to planets for better visual)
   const centerR = 55
 
   // Ascendant offset so AC is on the left (180 deg)
