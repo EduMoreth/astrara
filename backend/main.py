@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from database import init_db, get_connection
-from routers import auth, chart, user
+from routers import auth, chart, user, payments
 
 load_dotenv()
 
@@ -24,6 +24,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(chart.router)
 app.include_router(user.router)
+app.include_router(payments.router)
 
 
 def create_admin_if_needed():

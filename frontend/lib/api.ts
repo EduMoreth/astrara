@@ -103,3 +103,25 @@ export async function saveChart(chartId: string): Promise<void> {
     body: JSON.stringify({ chart_id: chartId }),
   })
 }
+
+export interface Product {
+  name: string
+  description: string
+  price: number
+  currency: string
+}
+
+export async function getProducts(): Promise<Record<string, Product>> {
+  return request<Record<string, Product>>('/payments/products')
+}
+
+export async function createCheckout(productType: string, chartId?: string): Promise<{ checkout_url: string; session_id: string }> {
+  return request('/payments/create-checkout', {
+    method: 'POST',
+    body: JSON.stringify({ product_type: productType, chart_id: chartId }),
+  })
+}
+
+export async function checkPayment(sessionId: string): Promise<{ paid: boolean; product_type: string }> {
+  return request(`/payments/check/${sessionId}`)
+}

@@ -11,3 +11,5 @@ pydantic
 python-dotenv
 httpx
 timezonefinder
+stripe
+bcrypt

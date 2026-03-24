@@ -8,7 +8,7 @@ import StarBackground from '@/components/StarBackground'
 import BirthForm from '@/components/BirthForm'
 import ChartWheel from '@/components/ChartWheel'
 import PlanetTable from '@/components/PlanetTable'
-import { generateChart, ChartResponse } from '@/lib/api'
+import { generateChart, createCheckout, ChartResponse } from '@/lib/api'
 
 export default function ChartPage() {
   const [loading, setLoading] = useState(false)
@@ -194,10 +194,18 @@ export default function ChartPage() {
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
                       {isLoggedIn ? (
                         <button
-                          onClick={() => toast.info('Interpretacao com IA em breve! Estamos finalizando.')}
+                          onClick={async () => {
+                            try {
+                              const { checkout_url } = await createCheckout('interpretation')
+                              window.location.href = checkout_url
+                            } catch (err: unknown) {
+                              const msg = err instanceof Error ? err.message : 'Erro ao iniciar pagamento'
+                              toast.error(msg)
+                            }
+                          }}
                           className="btn-primary text-sm"
                         >
-                          Ver interpretacao completa &rarr;
+                          Desbloquear interpretacao — R$ 29,90 &rarr;
                         </button>
                       ) : (
                         <>
