@@ -91,8 +91,11 @@ function toAbsoluteDeg(sign: string, deg: number): number {
 }
 
 function polarToXY(cx: number, cy: number, r: number, degAngle: number) {
-  const rad = ((degAngle - 90) * Math.PI) / 180
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) }
+  // Astrological chart: counter-clockwise, AC at left (180°)
+  // degAngle is the adjusted zodiac degree (AC = 180°)
+  // Convert to standard math angle and negate Y for SVG coordinate system
+  const rad = (degAngle * Math.PI) / 180
+  return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) }
 }
 
 // Spread planets that are too close to each other
