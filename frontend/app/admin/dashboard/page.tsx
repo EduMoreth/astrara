@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getStats, getUsers } from '@/lib/admin-api'
+import { getStats, getUsers, AdminUser } from '@/lib/admin-api'
 
 function StatCard({ icon, label, value, delta, color }: { icon: string; label: string; value: string; delta?: string; color?: string }) {
   return (
@@ -19,7 +19,7 @@ function StatCard({ icon, label, value, delta, color }: { icon: string; label: s
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Record<string, number> | null>(null)
-  const [recentUsers, setRecentUsers] = useState<Array<Record<string, unknown>>>([])
+  const [recentUsers, setRecentUsers] = useState<AdminUser[]>([])
 
   useEffect(() => {
     getStats().then(setStats).catch(console.error)
@@ -123,11 +123,11 @@ export default function AdminDashboard() {
           <tbody>
             {recentUsers.map((u, i) => (
               <tr key={i} className="border-b border-white/[0.03]">
-                <td className="px-3 py-2 text-stardust text-sm">{u.name as string}</td>
-                <td className="px-3 py-2 text-muted text-xs">{u.email as string}</td>
-                <td className="px-3 py-2"><span className="text-xs bg-gold/10 text-gold px-1.5 py-0.5 rounded-full">{u.plan as string}</span></td>
-                <td className="px-3 py-2"><span className={`text-xs px-1.5 py-0.5 rounded-full ${u.status === 'active' ? 'bg-[#2ECC71]/20 text-[#2ECC71]' : 'bg-[#E74C3C]/20 text-[#E74C3C]'}`}>{u.status as string}</span></td>
-                <td className="px-3 py-2 text-muted text-xs">{new Date(u.created_at as string).toLocaleDateString('pt-BR')}</td>
+                <td className="px-3 py-2 text-stardust text-sm">{u.name}</td>
+                <td className="px-3 py-2 text-muted text-xs">{u.email}</td>
+                <td className="px-3 py-2"><span className="text-xs bg-gold/10 text-gold px-1.5 py-0.5 rounded-full">{u.plan}</span></td>
+                <td className="px-3 py-2"><span className={`text-xs px-1.5 py-0.5 rounded-full ${u.status === 'active' ? 'bg-[#2ECC71]/20 text-[#2ECC71]' : 'bg-[#E74C3C]/20 text-[#E74C3C]'}`}>{u.status}</span></td>
+                <td className="px-3 py-2 text-muted text-xs">{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
               </tr>
             ))}
           </tbody>
