@@ -1250,6 +1250,14 @@ async def trigger_instagram_post(request: Request, admin: str = Depends(verify_a
         raise HTTPException(status_code=400, detail=f"Data invalida: {target_str}. Use formato YYYY-MM-DD.")
 
     try:
+        # Delete any existing failed/pending record for this date so it can be re-triggered
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM instagram_posts WHERE post_date = %s AND status != 'published'", (target,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
         from services.daily_post_orchestrator import run_daily_instagram_post
         result = run_daily_instagram_post(target)
     except Exception as e:
@@ -1306,3 +1314,18 @@ async def get_instagram_post(post_date: str, admin: str = Depends(verify_admin_t
     if not post:
         raise HTTPException(status_code=404, detail="Post nao encontrado")
     return {**post, "id": str(post["id"]), "post_date": str(post["post_date"])}
+
+
+@router.delete("/instagram/posts/{post_date}")
+async def delete_instagram_post(post_date: str, request: Request,
+                                admin: str = Depends(verify_admin_token)):
+    """Delete an Instagram post record (allows re-triggering for that date)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM instagram_posts WHERE post_date = %s", (post_date,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    log_action(admin, "delete_instagram_post", "instagram", post_date,
+               ip=request.client.host if request.client else None)
+    return {"success": True}
