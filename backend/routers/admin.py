@@ -26,7 +26,11 @@ stripe.api_key = os.getenv("STRIPE_API_KEY")
 router = APIRouter(prefix="/admin/api", tags=["admin"])
 security = HTTPBasic()
 
-ADMIN_JWT_SECRET = os.getenv("ADMIN_JWT_SECRET", os.getenv("SECRET_KEY", "admin-secret"))
+ADMIN_JWT_SECRET = os.getenv("ADMIN_JWT_SECRET") or os.getenv("SECRET_KEY")
+if not ADMIN_JWT_SECRET:
+    import warnings
+    warnings.warn("ADMIN_JWT_SECRET not set! Using insecure default.")
+    ADMIN_JWT_SECRET = "INSECURE-ADMIN-DEFAULT-" + str(os.getpid())
 ADMIN_JWT_ALGORITHM = "HS256"
 ADMIN_TOKEN_HOURS = 8
 
@@ -161,10 +165,10 @@ async def users_daily(days: int = 30, admin: str = Depends(verify_admin_token)):
     cur.execute("""
         SELECT created_at::date as date, COUNT(*) as count
         FROM users
-        WHERE created_at >= NOW() - INTERVAL '%s days'
+        WHERE created_at >= NOW() - make_interval(days => %s)
         GROUP BY created_at::date
         ORDER BY date
-    """ % days)
+    """, (days,))
     rows = cur.fetchall()
     cur.close()
     conn.close()

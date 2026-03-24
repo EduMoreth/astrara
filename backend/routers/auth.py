@@ -9,7 +9,11 @@ from database import get_connection
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    import warnings
+    warnings.warn("SECRET_KEY not set! Using insecure default. Set SECRET_KEY in environment.")
+    SECRET_KEY = "INSECURE-DEFAULT-CHANGE-ME-" + str(os.getpid())
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 72
 
