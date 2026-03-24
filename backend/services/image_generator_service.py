@@ -6,62 +6,88 @@ from datetime import date
 
 WIDTH, HEIGHT = 1080, 1350  # Instagram 4:5 portrait format
 
+# Astrara color palette
 COLOR_COSMOS   = (10, 10, 15)
 COLOR_SURFACE  = (18, 18, 26)
 COLOR_GOLD     = (201, 169, 110)
+COLOR_GOLD_DIM = (161, 135, 88)
 COLOR_VIOLET   = (123, 94, 167)
 COLOR_STARDUST = (240, 237, 232)
-COLOR_MUTED    = (139, 138, 155)
+COLOR_MUTED    = (160, 158, 170)
 
 
-def draw_stars(draw, count=220):
+def _draw_stars(draw, count=250):
+    """Draw twinkling stars on the background."""
     random.seed(42)
     for _ in range(count):
         x = random.randint(0, WIDTH)
         y = random.randint(0, HEIGHT)
-        size = random.choice([1, 1, 1, 2, 2, 3])
-        opacity = random.randint(80, 220)
-        color = (*COLOR_GOLD[:3], opacity) if random.random() > 0.85 else (240, 237, 232, opacity)
-        draw.ellipse([x - size, y - size, x + size, y + size], fill=color)
+        size = random.choice([0.5, 1, 1, 1, 1.5, 2])
+        brightness = random.randint(100, 255)
+        if random.random() > 0.9:
+            # Gold star
+            color = (201, 169, 110, brightness)
+        else:
+            color = (220, 220, 230, brightness)
+        r = int(size)
+        if r < 1:
+            draw.point((x, y), fill=color)
+        else:
+            draw.ellipse([x - r, y - r, x + r, y + r], fill=color)
 
 
-def draw_mandala_decorativa(draw, cx, cy, radius):
-    for i, r in enumerate([radius, radius + 20, radius + 35]):
-        opacity = [60, 40, 25][i]
-        color = (*COLOR_GOLD, opacity)
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=1)
+def _draw_decorative_circles(draw, cx, cy, radius):
+    """Draw decorative concentric circles."""
+    for i, r in enumerate([radius, radius + 15, radius + 28]):
+        opacity = max(15, 50 - i * 15)
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r],
+                     outline=(*COLOR_GOLD, opacity), width=1)
 
+    # 12 dots around the circle (zodiac markers)
     for angle_deg in range(0, 360, 30):
-        angle = math.radians(angle_deg)
-        x = cx + (radius + 8) * math.cos(angle)
-        y = cy + (radius + 8) * math.sin(angle)
-        draw.ellipse([x - 2, y - 2, x + 2, y + 2], fill=(*COLOR_GOLD, 180))
+        angle = math.radians(angle_deg - 90)
+        x = cx + (radius + 5) * math.cos(angle)
+        y = cy + (radius + 5) * math.sin(angle)
+        draw.ellipse([x - 1.5, y - 1.5, x + 1.5, y + 1.5], fill=(*COLOR_GOLD, 120))
 
 
 def _load_fonts():
-    """Try to load custom fonts, fallback to default."""
-    font_dirs = ["/app/fonts", os.path.join(os.path.dirname(__file__), "..", "fonts")]
+    """Try to load custom fonts from multiple locations."""
+    font_dirs = [
+        "/app/fonts",
+        os.path.join(os.path.dirname(__file__), "..", "fonts"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fonts"),
+    ]
 
     for font_dir in font_dirs:
+        if not os.path.isdir(font_dir):
+            continue
         try:
-            return {
-                "title": ImageFont.truetype(os.path.join(font_dir, "CormorantGaramond-Bold.ttf"), 56),
-                "subtitle": ImageFont.truetype(os.path.join(font_dir, "CormorantGaramond-Italic.ttf"), 34),
-                "body": ImageFont.truetype(os.path.join(font_dir, "Inter-Regular.ttf"), 30),
-                "small": ImageFont.truetype(os.path.join(font_dir, "Inter-Regular.ttf"), 24),
-                "logo": ImageFont.truetype(os.path.join(font_dir, "CormorantGaramond-Bold.ttf"), 42),
-                "energia": ImageFont.truetype(os.path.join(font_dir, "Inter-Regular.ttf"), 26),
-                "cta": ImageFont.truetype(os.path.join(font_dir, "Inter-Regular.ttf"), 22),
+            fonts = {
+                "title": ImageFont.truetype(os.path.join(font_dir, "CormorantGaramond-Bold.ttf"), 54),
+                "title_sm": ImageFont.truetype(os.path.join(font_dir, "CormorantGaramond-Bold.ttf"), 40),
+                "body": ImageFont.truetype(os.path.join(font_dir, "Inter-Regular.ttf"), 28),
+                "small": ImageFont.truetype(os.path.join(font_dir, "Inter-Regular.ttf"), 22),
+                "tiny": ImageFont.truetype(os.path.join(font_dir, "Inter-Regular.ttf"), 18),
+                "logo": ImageFont.truetype(os.path.join(font_dir, "CormorantGaramond-Bold.ttf"), 36),
+                "badge": ImageFont.truetype(os.path.join(font_dir, "Inter-Regular.ttf"), 20),
             }
-        except Exception:
+            print(f"[IMAGE] Fonts loaded from {font_dir}")
+            return fonts
+        except Exception as e:
+            print(f"[IMAGE] Failed to load fonts from {font_dir}: {e}")
             continue
 
-    # Fallback
+    print("[IMAGE] WARNING: Using fallback fonts - image quality will be poor")
     default = ImageFont.load_default()
-    return {k: default for k in ["title", "subtitle", "body", "small", "logo", "energia", "cta"]}
+    return {k: default for k in ["title", "title_sm", "body", "small", "tiny", "logo", "badge"]}
 
 
-def _draw_centered_text(draw, text, y, font, color, max_width=840):
+def _draw_text_centered(draw, text, y, font, color, max_width=860):
+    """Draw centered text with word wrapping. Returns total height used."""
+    if not text:
+        return 0
+
     words = text.split()
     lines = []
     current = ""
@@ -78,87 +104,108 @@ def _draw_centered_text(draw, text, y, font, color, max_width=840):
         lines.append(current)
 
     total_height = 0
-    for i, line in enumerate(lines):
+    for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font)
-        line_height = bbox[3] - bbox[1] + 10
-        x = (WIDTH - (bbox[2] - bbox[0])) // 2
-        draw.text((x, y + i * line_height), line, font=font, fill=color)
-        total_height += line_height
+        line_w = bbox[2] - bbox[0]
+        line_h = bbox[3] - bbox[1] + 8
+        x = (WIDTH - line_w) // 2
+        draw.text((x, y + total_height), line, font=font, fill=color)
+        total_height += line_h
 
     return total_height
 
 
+def _draw_gold_line(draw, y, width_pct=0.7):
+    """Draw a centered gold decorative line."""
+    margin = int(WIDTH * (1 - width_pct) / 2)
+    draw.line([(margin, y), (WIDTH - margin, y)], fill=(*COLOR_GOLD, 80), width=1)
+
+
 def generate_post_image(content: dict, target_date: date) -> str:
+    """Generate the daily horoscope post image with Astrara branding."""
     img = Image.new("RGBA", (WIDTH, HEIGHT), COLOR_COSMOS + (255,))
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Gradient background
+    # Subtle gradient - very dark, almost invisible
     for y in range(HEIGHT):
-        alpha = int(25 * (y / HEIGHT))
-        draw.line([(0, y), (WIDTH, y)], fill=(*COLOR_VIOLET, alpha))
+        progress = y / HEIGHT
+        # Slight warm tint in the middle
+        r_add = int(8 * math.sin(progress * math.pi))
+        b_add = int(5 * math.sin(progress * math.pi))
+        if r_add > 0 or b_add > 0:
+            draw.line([(0, y), (WIDTH, y)],
+                      fill=(10 + r_add, 10, 15 + b_add, 30))
 
-    draw_stars(draw)
-
-    # Top mandala decoration
-    draw_mandala_decorativa(draw, WIDTH // 2, 180, 80)
+    # Stars
+    _draw_stars(draw)
 
     fonts = _load_fonts()
 
+    # ── TOP SECTION ──────────────────────────────────────
+    # Decorative circle
+    _draw_decorative_circles(draw, WIDTH // 2, 120, 55)
+
     # Logo
-    _draw_centered_text(draw, "ASTRARA", 120, fonts["logo"], COLOR_GOLD)
+    _draw_text_centered(draw, "✦ ASTRARA ✦", 88, fonts["logo"], COLOR_GOLD)
 
     # Date
-    MONTH_NAMES = {
+    MONTHS = {
         1: "janeiro", 2: "fevereiro", 3: "marco", 4: "abril",
         5: "maio", 6: "junho", 7: "julho", 8: "agosto",
         9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro",
     }
-    date_str = f"{target_date.day} de {MONTH_NAMES[target_date.month]} de {target_date.year}"
-    _draw_centered_text(draw, date_str, 220, fonts["small"], COLOR_MUTED)
+    date_str = f"{target_date.day} de {MONTHS[target_date.month]} de {target_date.year}"
+    _draw_text_centered(draw, date_str, 190, fonts["small"], COLOR_MUTED)
 
     # Gold separator
-    draw.line([(120, 290), (960, 290)], fill=(*COLOR_GOLD, 120), width=1)
-    draw.line([(120, 292), (960, 292)], fill=(*COLOR_GOLD, 40), width=1)
+    _draw_gold_line(draw, 235)
 
-    # Title
+    # ── TITLE SECTION ────────────────────────────────────
     titulo = content.get("titulo", "Energia do Dia").upper()
-    h = _draw_centered_text(draw, titulo, 320, fonts["title"], COLOR_STARDUST)
+    h_title = _draw_text_centered(draw, titulo, 270, fonts["title"], COLOR_STARDUST)
 
     # Energy badge
     energia = content.get("energia_do_dia", "Transformacao").upper()
-    _draw_centered_text(draw, f"✦  {energia}  ✦", 320 + h + 15, fonts["energia"], COLOR_GOLD)
+    badge_y = 270 + h_title + 10
+    _draw_text_centered(draw, f"✦  {energia}  ✦", badge_y, fonts["badge"], COLOR_GOLD)
 
     # Separator
-    badge_y = 320 + h + 65
-    draw.line([(180, badge_y), (900, badge_y)], fill=(*COLOR_GOLD, 60), width=1)
+    sep1_y = badge_y + 45
+    _draw_gold_line(draw, sep1_y)
 
-    # Horoscope section
-    horoscopo_y = badge_y + 30
+    # ── HOROSCOPE SECTION ────────────────────────────────
+    horoscopo_y = sep1_y + 30
     horoscopo = content.get("horoscopo", "")
-    h2 = _draw_centered_text(draw, horoscopo, horoscopo_y, fonts["body"], COLOR_STARDUST, max_width=820)
+    h_horo = _draw_text_centered(draw, horoscopo, horoscopo_y, fonts["body"],
+                                  COLOR_STARDUST, max_width=820)
 
-    # Violet separator
-    sep2_y = horoscopo_y + h2 + 30
-    draw.line([(180, sep2_y), (900, sep2_y)], fill=(*COLOR_VIOLET, 80), width=1)
+    # ── TRANSITS SECTION ─────────────────────────────────
+    transit_sep_y = horoscopo_y + h_horo + 30
+    _draw_gold_line(draw, transit_sep_y, 0.5)
 
-    # Transits section
-    transit_label_y = sep2_y + 20
-    _draw_centered_text(draw, "TRANSITOS DO DIA", transit_label_y, fonts["small"], (*COLOR_VIOLET, 220))
+    transit_label_y = transit_sep_y + 18
+    _draw_text_centered(draw, "TRANSITOS DO DIA", transit_label_y,
+                        fonts["tiny"], (*COLOR_VIOLET, 220))
 
     transitos = content.get("transitos", "")
-    _draw_centered_text(draw, transitos, transit_label_y + 40, fonts["small"], COLOR_MUTED, max_width=820)
+    _draw_text_centered(draw, transitos, transit_label_y + 35, fonts["small"],
+                        COLOR_MUTED, max_width=800)
 
-    # Bottom section - CTA
-    draw.line([(120, HEIGHT - 130), (960, HEIGHT - 130)], fill=(*COLOR_GOLD, 80), width=1)
+    # ── FOOTER ───────────────────────────────────────────
+    _draw_gold_line(draw, HEIGHT - 120)
 
-    # CTA text
-    _draw_centered_text(draw, "Descubra seu mapa astral em", HEIGHT - 100, fonts["cta"], COLOR_MUTED)
-    _draw_centered_text(draw, "astrara.online", HEIGHT - 70, fonts["logo"], COLOR_GOLD)
+    _draw_text_centered(draw, "Descubra seu mapa astral", HEIGHT - 95,
+                        fonts["tiny"], COLOR_MUTED)
+    _draw_text_centered(draw, "astrara.online", HEIGHT - 65,
+                        fonts["title_sm"], COLOR_GOLD)
 
-    # Small mandala at bottom
-    draw_mandala_decorativa(draw, WIDTH // 2, HEIGHT - 40, 25)
+    # Small dots at very bottom
+    for i in range(5):
+        x = WIDTH // 2 - 20 + i * 10
+        draw.ellipse([x - 1, HEIGHT - 25, x + 1, HEIGHT - 23],
+                     fill=(*COLOR_GOLD, 100))
 
-    # Save as JPEG (required by Meta API)
+    # ── SAVE ─────────────────────────────────────────────
     output_dir = "/tmp/astrara_posts"
     os.makedirs(output_dir, exist_ok=True)
     filename = f"astrara_{target_date.strftime('%Y%m%d')}.jpg"
@@ -167,4 +214,5 @@ def generate_post_image(content: dict, target_date: date) -> str:
     final = img.convert("RGB")
     final.save(filepath, "JPEG", quality=95)
 
+    print(f"[IMAGE] Post image saved: {filepath} ({os.path.getsize(filepath)} bytes)")
     return filepath
