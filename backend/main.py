@@ -13,9 +13,17 @@ app = FastAPI(
     version="1.0.0",
 )
 
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://www.astrara.online")
+ALLOWED_ORIGINS = [
+    FRONTEND_URL,
+    "https://astrara.online",
+    "https://www.astrara.online",
+    "http://localhost:3000",  # dev
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

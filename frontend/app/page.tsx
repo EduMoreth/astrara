@@ -242,12 +242,16 @@ export default function LandingPage() {
             <span className="text-muted text-sm">O cosmos, decifrado.</span>
           </div>
           <div className="flex items-center gap-6 text-sm text-muted">
-            <a href="#" className="hover:text-stardust transition-colors">
+            <a href="/privacidade" className="hover:text-stardust transition-colors">
               Politica de Privacidade
             </a>
             <span className="text-gold/20">·</span>
-            <a href="#" className="hover:text-stardust transition-colors">
+            <a href="/termos" className="hover:text-stardust transition-colors">
               Termos de Uso
+            </a>
+            <span className="text-gold/20">·</span>
+            <a href="/support" className="hover:text-stardust transition-colors">
+              Suporte
             </a>
           </div>
         </div>

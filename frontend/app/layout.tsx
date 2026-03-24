@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, Cormorant_Garamond } from 'next/font/google'
 import { Toaster } from 'sonner'
+import CookieConsent from '@/components/CookieConsent'
 import './globals.css'
 
 const inter = Inter({
@@ -16,9 +17,22 @@ const cormorant = Cormorant_Garamond({
 
 export const metadata: Metadata = {
   title: 'Astrara — O cosmos, decifrado.',
-  description:
-    'Calcule seu mapa astral gratuitamente com precisão profissional. Interpretações profundas com inteligência artificial.',
-  keywords: 'mapa astral, astrologia, mapa natal, horoscopo, signos',
+  description: 'Calcule seu mapa astral gratuitamente com precisao profissional. Interpretacoes profundas com inteligencia artificial.',
+  keywords: 'mapa astral, astrologia, mapa natal, horoscopo, signos, mapa astrologico',
+  openGraph: {
+    title: 'Astrara — O cosmos, decifrado.',
+    description: 'Calcule seu mapa astral gratuitamente. Interpretacoes com IA.',
+    url: 'https://www.astrara.online',
+    siteName: 'Astrara',
+    type: 'website',
+    locale: 'pt_BR',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Astrara — O cosmos, decifrado.',
+    description: 'Calcule seu mapa astral gratuitamente. Interpretacoes com IA.',
+  },
+  robots: { index: true, follow: true },
 }
 
 export default function RootLayout({
@@ -30,6 +44,7 @@ export default function RootLayout({
     <html lang="pt-BR" className={`${inter.variable} ${cormorant.variable}`}>
       <body className="font-sans">
         {children}
+        <CookieConsent />
         <Toaster
           theme="dark"
           position="top-right"

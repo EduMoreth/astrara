@@ -16,6 +16,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [consent, setConsent] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -30,13 +31,25 @@ export default function RegisterPage() {
       return
     }
 
+    if (!consent) {
+      toast.error('Voce precisa aceitar a Politica de Privacidade e os Termos de Uso')
+      return
+    }
+
     setLoading(true)
 
     try {
       const res = await apiRegister(name, email, password)
       setToken(res.access_token)
       toast.success('Conta criada com sucesso!')
-      router.push('/dashboard')
+      // Check if user had an intent before registering
+      const intent = sessionStorage.getItem('astrara_intent')
+      if (intent === 'buy_interpretation') {
+        sessionStorage.removeItem('astrara_intent')
+        router.push('/chart')
+      } else {
+        router.push('/dashboard')
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao criar conta'
       toast.error(message)
@@ -117,9 +130,25 @@ export default function RegisterPage() {
               />
             </div>
 
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={e => setConsent(e.target.checked)}
+                className="mt-1 accent-gold w-4 h-4 flex-shrink-0"
+              />
+              <span className="text-xs text-muted leading-relaxed">
+                Li e concordo com a{' '}
+                <Link href="/privacidade" target="_blank" className="text-gold hover:underline">Politica de Privacidade</Link>
+                {' '}e os{' '}
+                <Link href="/termos" target="_blank" className="text-gold hover:underline">Termos de Uso</Link>.
+                Autorizo o tratamento dos meus dados pessoais conforme descrito.
+              </span>
+            </label>
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !consent}
               className="btn-primary w-full mt-2 disabled:opacity-50"
             >
               {loading ? 'Criando conta...' : 'Criar conta gratis'}

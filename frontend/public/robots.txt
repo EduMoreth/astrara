@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /auth/
+Disallow: /api/
+Disallow: /checkout/
+
+Sitemap: https://www.astrara.online/sitemap.xml
