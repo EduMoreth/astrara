@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     zlib1g-dev \
     libfreetype6-dev \
+    libfreetype6 \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

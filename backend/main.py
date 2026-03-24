@@ -156,3 +156,44 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/debug/fonts")
+async def debug_fonts():
+    """Temporary endpoint to debug font loading on server."""
+    import os
+    from PIL import ImageFont
+
+    results = {}
+    font_dirs = ["/app/fonts", "/app/backend/fonts"]
+
+    for d in font_dirs:
+        results[d] = {
+            "exists": os.path.isdir(d),
+            "files": os.listdir(d) if os.path.isdir(d) else [],
+        }
+
+    # Try loading
+    test_fonts = {}
+    for d in font_dirs:
+        if not os.path.isdir(d):
+            continue
+        for f in os.listdir(d):
+            if f.endswith(".ttf"):
+                path = os.path.join(d, f)
+                try:
+                    font = ImageFont.truetype(path, 40)
+                    test_fonts[f] = {"status": "OK", "path": path, "size": os.path.getsize(path)}
+                except Exception as e:
+                    test_fonts[f] = {"status": "FAILED", "path": path, "error": str(e)}
+
+    # Check CWD
+    cwd = os.getcwd()
+    cwd_files = os.listdir(cwd) if os.path.isdir(cwd) else []
+
+    return {
+        "cwd": cwd,
+        "cwd_contents": cwd_files[:20],
+        "font_dirs": results,
+        "font_loading": test_fonts,
+    }
