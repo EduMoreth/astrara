@@ -5,11 +5,23 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from models.chart import ChartRequest
 from services.astro_service import generate_chart
-from services.geocoding_service import geocode
+from services.geocoding_service import geocode, search_cities
 from services.interpretation_service import generate_interpretation, generate_pdf
 from database import get_connection
 
 router = APIRouter(prefix="/chart", tags=["chart"])
+
+
+@router.get("/search-city")
+async def search_city(q: str = "", country: str = ""):
+    """Search cities for autocomplete. Returns multiple matches with coordinates."""
+    if len(q) < 2:
+        return []
+    try:
+        results = search_cities(q, country if country else None, limit=5)
+        return results
+    except Exception:
+        return []
 
 
 def get_optional_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:

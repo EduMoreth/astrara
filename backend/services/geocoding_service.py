@@ -6,6 +6,56 @@ from datetime import datetime
 from math import floor
 
 
+def search_cities(query: str, country: str | None = None, limit: int = 5) -> list:
+    """Search for cities matching query. Returns multiple results for autocomplete."""
+    geolocator = Nominatim(user_agent="astrara-astrology")
+    search = f"{query}, {country}" if country else query
+
+    try:
+        results = geolocator.geocode(
+            search,
+            exactly_one=False,
+            limit=limit,
+            language="pt",
+            timeout=10,
+            addressdetails=True,
+        )
+    except GeocoderTimedOut:
+        return []
+
+    if not results:
+        return []
+
+    cities = []
+    seen = set()
+    for loc in results:
+        addr = loc.raw.get("address", {})
+        city_name = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality") or query
+        state = addr.get("state", "")
+        country_name = addr.get("country", "")
+        display = f"{city_name}, {state}, {country_name}" if state else f"{city_name}, {country_name}"
+
+        # Dedup
+        key = f"{round(loc.latitude, 2)},{round(loc.longitude, 2)}"
+        if key in seen:
+            continue
+        seen.add(key)
+
+        tz_str = _get_timezone(loc.latitude, loc.longitude)
+
+        cities.append({
+            "city": city_name,
+            "state": state,
+            "country": country_name,
+            "display": display,
+            "lat": round(loc.latitude, 6),
+            "lng": round(loc.longitude, 6),
+            "tz_str": tz_str,
+        })
+
+    return cities
+
+
 def geocode(city: str, country: str | None = None) -> dict:
     """Convert city name to lat/lng/timezone using Nominatim (free)."""
     geolocator = Nominatim(user_agent="astrara-astrology")

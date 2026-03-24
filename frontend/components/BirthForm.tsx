@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, useRef, FormEvent } from 'react'
 import { motion } from 'framer-motion'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.up.railway.app'
 
 interface BirthFormData {
   name: string
@@ -19,59 +21,32 @@ interface Props {
   loading: boolean
 }
 
+interface CityResult {
+  city: string
+  state: string
+  country: string
+  display: string
+  lat: number
+  lng: number
+  tz_str: string
+}
+
 const COUNTRIES = [
-  'Brasil',
-  'África do Sul',
-  'Alemanha',
-  'Angola',
-  'Argentina',
-  'Austrália',
-  'Bolívia',
-  'Canadá',
-  'Chile',
-  'China',
-  'Colômbia',
-  'Coreia do Sul',
-  'Cuba',
-  'Equador',
-  'Espanha',
-  'Estados Unidos',
-  'França',
-  'Índia',
-  'Irlanda',
-  'Israel',
-  'Itália',
-  'Japão',
-  'México',
-  'Moçambique',
-  'Nigéria',
-  'Noruega',
-  'Nova Zelândia',
-  'Paraguai',
-  'Peru',
-  'Portugal',
-  'Reino Unido',
-  'Rússia',
-  'Suécia',
-  'Suíça',
-  'Turquia',
-  'Uruguai',
-  'Venezuela',
+  'Brasil', 'Africa do Sul', 'Alemanha', 'Angola', 'Argentina', 'Australia',
+  'Bolivia', 'Canada', 'Chile', 'China', 'Colombia', 'Coreia do Sul', 'Cuba',
+  'Equador', 'Espanha', 'Estados Unidos', 'Franca', 'India', 'Irlanda',
+  'Israel', 'Italia', 'Japao', 'Mexico', 'Mocambique', 'Nigeria', 'Noruega',
+  'Nova Zelandia', 'Paraguai', 'Peru', 'Portugal', 'Reino Unido', 'Russia',
+  'Suecia', 'Suica', 'Turquia', 'Uruguai', 'Venezuela',
 ]
 
 const MONTHS = [
-  { value: 1, label: 'Janeiro' },
-  { value: 2, label: 'Fevereiro' },
-  { value: 3, label: 'Março' },
-  { value: 4, label: 'Abril' },
-  { value: 5, label: 'Maio' },
-  { value: 6, label: 'Junho' },
-  { value: 7, label: 'Julho' },
-  { value: 8, label: 'Agosto' },
-  { value: 9, label: 'Setembro' },
-  { value: 10, label: 'Outubro' },
-  { value: 11, label: 'Novembro' },
-  { value: 12, label: 'Dezembro' },
+  { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' },
+  { value: 3, label: 'Marco' }, { value: 4, label: 'Abril' },
+  { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
+  { value: 7, label: 'Julho' }, { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Setembro' }, { value: 10, label: 'Outubro' },
+  { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' },
 ]
 
 export default function BirthForm({ onSubmit, loading }: Props) {
@@ -81,13 +56,74 @@ export default function BirthForm({ onSubmit, loading }: Props) {
   const [birthYear, setBirthYear] = useState('')
   const [birthTime, setBirthTime] = useState('')
   const [unknownTime, setUnknownTime] = useState(false)
-  const [city, setCity] = useState('')
   const [country, setCountry] = useState('Brasil')
+
+  // City autocomplete state
+  const [cityQuery, setCityQuery] = useState('')
+  const [cityResults, setCityResults] = useState<CityResult[]>([])
+  const [selectedCity, setSelectedCity] = useState<CityResult | null>(null)
+  const [showCityDropdown, setShowCityDropdown] = useState(false)
+  const [searchingCity, setSearchingCity] = useState(false)
+  const cityRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<NodeJS.Timeout>()
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (cityRef.current && !cityRef.current.contains(e.target as Node)) {
+        setShowCityDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  // Search cities with debounce
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    if (cityQuery.length < 2 || selectedCity) {
+      setCityResults([])
+      setShowCityDropdown(false)
+      return
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setSearchingCity(true)
+      try {
+        const res = await fetch(`${API_URL}/chart/search-city?q=${encodeURIComponent(cityQuery)}&country=${encodeURIComponent(country)}`)
+        if (res.ok) {
+          const data = await res.json()
+          setCityResults(data)
+          setShowCityDropdown(data.length > 0)
+        }
+      } catch {
+        // silently fail
+      } finally {
+        setSearchingCity(false)
+      }
+    }, 400)
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [cityQuery, country, selectedCity])
+
+  function selectCity(city: CityResult) {
+    setSelectedCity(city)
+    setCityQuery(city.display)
+    setShowCityDropdown(false)
+    setCityResults([])
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
 
-    if (!name || !birthDay || !birthMonth || !birthYear || !city) return
+    if (!name || !birthDay || !birthMonth || !birthYear) return
+
+    // Must have selected a city from autocomplete
+    if (!selectedCity) {
+      // If user typed but didn't select, use raw text
+      if (!cityQuery) return
+    }
 
     const day = parseInt(birthDay, 10)
     const month = parseInt(birthMonth, 10)
@@ -105,7 +141,16 @@ export default function BirthForm({ onSubmit, loading }: Props) {
       minute = m
     }
 
-    onSubmit({ name, year, month, day, hour, minute, city, country })
+    onSubmit({
+      name,
+      year,
+      month,
+      day,
+      hour,
+      minute,
+      city: selectedCity?.city || cityQuery,
+      country: selectedCity?.country || country,
+    })
   }
 
   const currentYear = new Date().getFullYear()
@@ -140,45 +185,35 @@ export default function BirthForm({ onSubmit, loading }: Props) {
         <div>
           <label className="block text-sm text-muted mb-2">Data de nascimento</label>
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <input
-                type="number"
-                className="input-field text-center"
-                placeholder="Dia"
-                min={1}
-                max={31}
-                value={birthDay}
-                onChange={(e) => setBirthDay(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <select
-                className="input-field text-center"
-                value={birthMonth}
-                onChange={(e) => setBirthMonth(e.target.value)}
-                required
-              >
-                <option value="">Mês</option>
-                {MONTHS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <input
-                type="number"
-                className="input-field text-center"
-                placeholder="Ano"
-                min={1900}
-                max={currentYear}
-                value={birthYear}
-                onChange={(e) => setBirthYear(e.target.value)}
-                required
-              />
-            </div>
+            <input
+              type="number"
+              className="input-field text-center"
+              placeholder="Dia"
+              min={1} max={31}
+              value={birthDay}
+              onChange={(e) => setBirthDay(e.target.value)}
+              required
+            />
+            <select
+              className="input-field text-center"
+              value={birthMonth}
+              onChange={(e) => setBirthMonth(e.target.value)}
+              required
+            >
+              <option value="">Mes</option>
+              {MONTHS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              className="input-field text-center"
+              placeholder="Ano"
+              min={1900} max={currentYear}
+              value={birthYear}
+              onChange={(e) => setBirthYear(e.target.value)}
+              required
+            />
           </div>
         </div>
 
@@ -197,39 +232,76 @@ export default function BirthForm({ onSubmit, loading }: Props) {
               type="checkbox"
               checked={unknownTime}
               onChange={(e) => setUnknownTime(e.target.checked)}
-              className="rounded border-gold/30 bg-surface text-gold focus:ring-gold/30"
+              className="accent-gold"
             />
             <span className="text-sm text-muted">Nao sei minha hora exata</span>
           </label>
         </div>
 
-        {/* Country - BEFORE city */}
+        {/* Country */}
         <div>
-          <label className="block text-sm text-muted mb-2">País</label>
+          <label className="block text-sm text-muted mb-2">Pais</label>
           <select
             className="input-field"
             value={country}
-            onChange={(e) => setCountry(e.target.value)}
+            onChange={(e) => { setCountry(e.target.value); setSelectedCity(null); setCityQuery('') }}
           >
             {COUNTRIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
+              <option key={c} value={c}>{c}</option>
             ))}
           </select>
         </div>
 
-        {/* City */}
-        <div>
+        {/* City with autocomplete */}
+        <div ref={cityRef} className="relative">
           <label className="block text-sm text-muted mb-2">Cidade de nascimento</label>
-          <input
-            type="text"
-            className="input-field"
-            placeholder="Ex: São Paulo"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            required
-          />
+          <div className="relative">
+            <input
+              type="text"
+              className="input-field pr-8"
+              placeholder="Digite o nome da cidade..."
+              value={cityQuery}
+              onChange={(e) => {
+                setCityQuery(e.target.value)
+                if (selectedCity) setSelectedCity(null)
+              }}
+              onFocus={() => { if (cityResults.length > 0) setShowCityDropdown(true) }}
+              required
+            />
+            {searchingCity && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <div className="w-4 h-4 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+            {selectedCity && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[#2ECC71]">
+                ✓
+              </div>
+            )}
+          </div>
+
+          {/* Autocomplete dropdown */}
+          {showCityDropdown && cityResults.length > 0 && (
+            <div className="absolute z-50 w-full mt-1 glass-card rounded-xl overflow-hidden border border-gold/20 shadow-lg max-h-48 overflow-y-auto">
+              {cityResults.map((city, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => selectCity(city)}
+                  className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors border-b border-white/[0.03] last:border-0"
+                >
+                  <span className="text-stardust text-sm block">{city.city}</span>
+                  <span className="text-muted text-xs">{city.state}{city.state ? ', ' : ''}{city.country}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {selectedCity && (
+            <p className="text-xs text-muted mt-1">
+              📍 {selectedCity.display}
+            </p>
+          )}
         </div>
       </div>
 
@@ -241,21 +313,13 @@ export default function BirthForm({ onSubmit, loading }: Props) {
         {loading ? (
           <span className="flex items-center justify-center gap-2">
             <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12" cy="12" r="10"
-                stroke="currentColor" strokeWidth="4" fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
             Consultando os astros...
           </span>
         ) : (
-          'Calcular meu mapa \u2192'
+          'Calcular meu mapa →'
         )}
       </button>
     </motion.form>
