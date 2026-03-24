@@ -158,22 +158,48 @@ export default function AdminInstagramPage() {
                   ) : '-'}
                 </td>
                 <td className="px-4 py-3">
-                  <button
-                    onClick={async () => {
-                      setTriggering(true)
-                      try {
-                        await fetch(`${API_URL}/admin/api/instagram/posts/trigger`, {
-                          method: 'POST', headers: getAdminHeaders(),
-                          body: JSON.stringify({ date: p.post_date }),
-                        })
-                        toast.success('Post republicado!')
-                      } catch { toast.error('Erro') }
-                      finally { setTriggering(false) }
-                    }}
-                    className="text-gold text-xs hover:underline"
-                  >
-                    Republicar
-                  </button>
+                  <div className="flex gap-2 items-center">
+                    <button
+                      onClick={async () => {
+                        setTriggering(true)
+                        try {
+                          const res = await fetch(`${API_URL}/admin/api/instagram/posts/trigger`, {
+                            method: 'POST', headers: getAdminHeaders(),
+                            body: JSON.stringify({ date: p.post_date }),
+                          })
+                          const data = await res.json()
+                          if (data.success) toast.success('Post republicado!')
+                          else toast.error(data.error || 'Erro')
+                          // Reload
+                          const reload = await fetch(`${API_URL}/admin/api/instagram/posts`, { headers: getAdminHeaders() })
+                          const reloadData = await reload.json()
+                          setPosts(reloadData.posts); setTotal(reloadData.total)
+                        } catch { toast.error('Erro') }
+                        finally { setTriggering(false) }
+                      }}
+                      className="text-gold text-xs hover:underline"
+                    >
+                      Republicar
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Tem certeza que deseja deletar este post?')) return
+                        try {
+                          const res = await fetch(`${API_URL}/admin/api/instagram/posts/${p.post_date}`, {
+                            method: 'DELETE', headers: getAdminHeaders(),
+                          })
+                          if (res.ok) {
+                            toast.success('Post deletado')
+                            setPosts(posts.filter(x => x.id !== p.id))
+                            setTotal(t => t - 1)
+                          } else toast.error('Erro ao deletar')
+                        } catch { toast.error('Erro ao deletar') }
+                      }}
+                      className="text-[#E74C3C] text-xs hover:underline"
+                    >
+                      Deletar
+                    </button>
+                  </div>
                   {p.error_message && (
                     <span className="text-[#E74C3C] text-[10px] block mt-1" title={p.error_message}>
                       Erro: {p.error_message.slice(0, 40)}...
