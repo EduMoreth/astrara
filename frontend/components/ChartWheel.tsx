@@ -18,6 +18,10 @@ interface Props {
   positions: Record<string, Position>
   houses?: Array<{ sign: string; deg: number }>
   aspects?: Aspect[]
+  birthName?: string
+  birthDate?: string
+  birthTime?: string
+  birthCity?: string
 }
 
 // Kerykeion returns abbreviated sign names — map all variants to full names
@@ -109,7 +113,7 @@ function spreadPlanets(items: { key: string; deg: number }[], minGap: number) {
   return sorted
 }
 
-export default function ChartWheel({ positions, houses, aspects }: Props) {
+export default function ChartWheel({ positions, houses, aspects, birthName, birthDate, birthTime, birthCity }: Props) {
   const cx = 300
   const cy = 300
   const outerR = 275
@@ -161,7 +165,7 @@ export default function ChartWheel({ positions, houses, aspects }: Props) {
       {/* Glow */}
       <div className="absolute inset-0 rounded-full bg-violet/10 blur-[80px] -z-10" />
 
-      <svg viewBox="0 0 600 600" className="chart-wheel-svg w-full max-w-xl mx-auto drop-shadow-2xl">
+      <svg viewBox="0 0 600 680" className="chart-wheel-svg w-full max-w-xl mx-auto drop-shadow-2xl">
         <defs>
           <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="rgba(18,18,26,0.95)" />
@@ -353,6 +357,21 @@ export default function ChartWheel({ positions, houses, aspects }: Props) {
         </text>
 
         {/* IC label already rendered in MC-IC axis group above */}
+
+        {/* ── Birth Info ─────────────────────────────── */}
+        {birthName && (
+          <text x={cx} y={610} textAnchor="middle" fill="#C9A96E" fontSize="14" fontWeight="600" fontFamily="serif">
+            {birthName}
+          </text>
+        )}
+        {(birthDate || birthTime || birthCity) && (
+          <text x={cx} y={632} textAnchor="middle" fill="#8B8A9B" fontSize="11">
+            {[birthDate, birthTime, birthCity].filter(Boolean).join(' · ')}
+          </text>
+        )}
+        <text x={cx} y={655} textAnchor="middle" fill="rgba(201,169,110,0.3)" fontSize="9" fontFamily="sans-serif">
+          astrara.online
+        </text>
       </svg>
     </motion.div>
   )

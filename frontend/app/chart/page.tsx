@@ -291,7 +291,15 @@ export default function ChartPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
                 {/* Chart wheel */}
                 <div>
-                  <ChartWheel positions={result.positions} houses={result.houses} aspects={result.aspects} />
+                  <ChartWheel
+                    positions={result.positions}
+                    houses={result.houses}
+                    aspects={result.aspects}
+                    birthName={(() => { try { const f = JSON.parse(sessionStorage.getItem('astrara_last_form') || '{}'); return f.name } catch { return '' } })()}
+                    birthDate={(() => { try { const f = JSON.parse(sessionStorage.getItem('astrara_last_form') || '{}'); return f.day && f.month && f.year ? `${String(f.day).padStart(2,'0')}/${String(f.month).padStart(2,'0')}/${f.year}` : '' } catch { return '' } })()}
+                    birthTime={(() => { try { const f = JSON.parse(sessionStorage.getItem('astrara_last_form') || '{}'); return f.hour !== undefined ? `${String(f.hour).padStart(2,'0')}:${String(f.minute).padStart(2,'0')}` : '' } catch { return '' } })()}
+                    birthCity={(() => { try { const f = JSON.parse(sessionStorage.getItem('astrara_last_form') || '{}'); return f.city || '' } catch { return '' } })()}
+                  />
                   {/* Save to account + Download */}
                   <div className="space-y-3 mt-6">
                     <div className="flex justify-center gap-3">
