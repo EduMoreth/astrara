@@ -27,18 +27,18 @@ const PLANET_MAP: Record<string, { icon: string; label: string }> = {
 }
 
 const SIGN_TRANSLATIONS: Record<string, string> = {
-  Aries: 'Aries',
-  Taurus: 'Touro',
-  Gemini: 'Gemeos',
-  Cancer: 'Cancer',
+  Aries: 'Aries', Ari: 'Aries',
+  Taurus: 'Touro', Tau: 'Touro',
+  Gemini: 'Gemeos', Gem: 'Gemeos',
+  Cancer: 'Cancer', Can: 'Cancer',
   Leo: 'Leao',
-  Virgo: 'Virgem',
-  Libra: 'Libra',
-  Scorpio: 'Escorpiao',
-  Sagittarius: 'Sagitario',
-  Capricorn: 'Capricornio',
-  Aquarius: 'Aquario',
-  Pisces: 'Peixes',
+  Virgo: 'Virgem', Vir: 'Virgem',
+  Libra: 'Libra', Lib: 'Libra',
+  Scorpio: 'Escorpiao', Sco: 'Escorpiao',
+  Sagittarius: 'Sagitario', Sag: 'Sagitario',
+  Capricorn: 'Capricornio', Cap: 'Capricornio',
+  Aquarius: 'Aquario', Aqu: 'Aquario',
+  Pisces: 'Peixes', Pis: 'Peixes',
 }
 
 function formatDegree(deg: number): string {
