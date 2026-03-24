@@ -311,18 +311,35 @@ export default function ChartWheel({ positions, houses, aspects }: Props) {
           </text>
         )}
 
-        {/* MC label */}
+        {/* MC-IC axis line */}
         {positions.midheaven && (() => {
           const mcDeg = adj(positions.midheaven.sign, positions.midheaven.deg)
-          const mcp = polarToXY(cx, cy, outerR + 16, mcDeg)
+          const icDeg = (mcDeg + 180) % 360
+          const mc1 = polarToXY(cx, cy, centerR, mcDeg)
+          const mc2 = polarToXY(cx, cy, innerR, mcDeg)
+          const ic1 = polarToXY(cx, cy, centerR, icDeg)
+          const ic2 = polarToXY(cx, cy, innerR, icDeg)
+          const mcp = polarToXY(cx, cy, outerR + 20, mcDeg)
+          const icp = polarToXY(cx, cy, outerR + 20, icDeg)
           return (
-            <text
-              x={mcp.x} y={mcp.y}
-              textAnchor="middle" fill="#C9A96E" fontSize="12" fontWeight="700"
-              letterSpacing="1"
-            >
-              MC
-            </text>
+            <g>
+              {/* MC axis line */}
+              <line x1={mc1.x} y1={mc1.y} x2={mc2.x} y2={mc2.y}
+                stroke="#C9A96E" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.6" />
+              {/* IC axis line */}
+              <line x1={ic1.x} y1={ic1.y} x2={ic2.x} y2={ic2.y}
+                stroke="rgba(201,169,110,0.3)" strokeWidth="1" strokeDasharray="4,3" />
+              {/* MC label - prominent */}
+              <text x={mcp.x} y={mcp.y} textAnchor="middle" dominantBaseline="central"
+                fill="#C9A96E" fontSize="14" fontWeight="700" letterSpacing="1">
+                MC
+              </text>
+              {/* IC label */}
+              <text x={icp.x} y={icp.y} textAnchor="middle" dominantBaseline="central"
+                fill="rgba(201,169,110,0.4)" fontSize="10" fontWeight="600" letterSpacing="1">
+                IC
+              </text>
+            </g>
           )
         })()}
 
@@ -335,21 +352,7 @@ export default function ChartWheel({ positions, houses, aspects }: Props) {
           DC
         </text>
 
-        {/* IC label (opposite of MC) */}
-        {positions.midheaven && (() => {
-          const mcDeg = adj(positions.midheaven.sign, positions.midheaven.deg)
-          const icDeg = (mcDeg + 180) % 360
-          const icp = polarToXY(cx, cy, outerR + 16, icDeg)
-          return (
-            <text
-              x={icp.x} y={icp.y}
-              textAnchor="middle" fill="rgba(201,169,110,0.4)" fontSize="10" fontWeight="600"
-              letterSpacing="1"
-            >
-              IC
-            </text>
-          )
-        })()}
+        {/* IC label already rendered in MC-IC axis group above */}
       </svg>
     </motion.div>
   )

@@ -95,26 +95,24 @@ def generate_chart(
         online=False,
     )
 
-    # Debug: log raw Kerykeion data
-    print(f"[ASTRO DEBUG] Name={name}, Date={year}-{month}-{day} {hour}:{minute}")
-    print(f"[ASTRO DEBUG] Lat={lat}, Lng={lng}, TZ={tz_str}")
-    print(f"[ASTRO DEBUG] Sun: sign={subject.sun.sign}, pos={subject.sun.position}, abs={getattr(subject.sun, 'abs_pos', 'N/A')}")
-    print(f"[ASTRO DEBUG] Moon: sign={subject.moon.sign}, pos={subject.moon.position}, abs={getattr(subject.moon, 'abs_pos', 'N/A')}")
-    print(f"[ASTRO DEBUG] UTC offset from Kerykeion: {getattr(subject, 'utc_time', 'N/A')}, local={getattr(subject, 'local_time', 'N/A')}")
+    def _deg_in_sign(position: float) -> float:
+        """Convert absolute zodiac position (0-360) to degree within sign (0-30).
+        Kerykeion .position returns absolute ecliptic longitude, not degree within sign."""
+        return round(position % 30, 2)
 
     positions = {
-        "sun": {"sign": subject.sun.sign, "deg": round(subject.sun.position, 2)},
-        "moon": {"sign": subject.moon.sign, "deg": round(subject.moon.position, 2)},
-        "mercury": {"sign": subject.mercury.sign, "deg": round(subject.mercury.position, 2)},
-        "venus": {"sign": subject.venus.sign, "deg": round(subject.venus.position, 2)},
-        "mars": {"sign": subject.mars.sign, "deg": round(subject.mars.position, 2)},
-        "jupiter": {"sign": subject.jupiter.sign, "deg": round(subject.jupiter.position, 2)},
-        "saturn": {"sign": subject.saturn.sign, "deg": round(subject.saturn.position, 2)},
-        "uranus": {"sign": subject.uranus.sign, "deg": round(subject.uranus.position, 2)},
-        "neptune": {"sign": subject.neptune.sign, "deg": round(subject.neptune.position, 2)},
-        "pluto": {"sign": subject.pluto.sign, "deg": round(subject.pluto.position, 2)},
-        "ascendant": {"sign": subject.first_house.sign, "deg": round(subject.first_house.position, 2)},
-        "midheaven": {"sign": subject.tenth_house.sign, "deg": round(subject.tenth_house.position, 2)},
+        "sun": {"sign": subject.sun.sign, "deg": _deg_in_sign(subject.sun.position)},
+        "moon": {"sign": subject.moon.sign, "deg": _deg_in_sign(subject.moon.position)},
+        "mercury": {"sign": subject.mercury.sign, "deg": _deg_in_sign(subject.mercury.position)},
+        "venus": {"sign": subject.venus.sign, "deg": _deg_in_sign(subject.venus.position)},
+        "mars": {"sign": subject.mars.sign, "deg": _deg_in_sign(subject.mars.position)},
+        "jupiter": {"sign": subject.jupiter.sign, "deg": _deg_in_sign(subject.jupiter.position)},
+        "saturn": {"sign": subject.saturn.sign, "deg": _deg_in_sign(subject.saturn.position)},
+        "uranus": {"sign": subject.uranus.sign, "deg": _deg_in_sign(subject.uranus.position)},
+        "neptune": {"sign": subject.neptune.sign, "deg": _deg_in_sign(subject.neptune.position)},
+        "pluto": {"sign": subject.pluto.sign, "deg": _deg_in_sign(subject.pluto.position)},
+        "ascendant": {"sign": subject.first_house.sign, "deg": _deg_in_sign(subject.first_house.position)},
+        "midheaven": {"sign": subject.tenth_house.sign, "deg": _deg_in_sign(subject.tenth_house.position)},
     }
 
     # Build houses data for frontend chart rendering
