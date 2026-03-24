@@ -116,12 +116,16 @@ export async function getProducts(): Promise<Record<string, Product>> {
 }
 
 export async function createCheckout(productType: string, chartId?: string): Promise<{ checkout_url: string; session_id: string }> {
-  return request('/payments/create-checkout', {
+  return request('/checkout/create', {
     method: 'POST',
-    body: JSON.stringify({ product_type: productType, chart_id: chartId }),
+    body: JSON.stringify({ product_id: productType, chart_id: chartId }),
   })
 }
 
 export async function checkPayment(sessionId: string): Promise<{ paid: boolean; product_type: string }> {
-  return request(`/payments/check/${sessionId}`)
+  return request(`/checkout/verify/${sessionId}`)
+}
+
+export async function getAvailableProducts() {
+  return request<Array<{ id: string; name: string; description: string; type: string; price_cents: number; credits: number }>>('/checkout/products')
 }
