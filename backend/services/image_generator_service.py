@@ -115,7 +115,7 @@ def generate_post_image(content: dict, target_date: date) -> str:
     _draw_zodiac_ring(draw, WIDTH // 2, 85, 50)
     _center_text(draw, "ASTRARA", 55, fonts["logo"], GOLD_BRIGHT)
 
-    MONTHS = {1:"janeiro",2:"fevereiro",3:"marco",4:"abril",5:"maio",6:"junho",
+    MONTHS = {1:"janeiro",2:"fevereiro",3:"março",4:"abril",5:"maio",6:"junho",
               7:"julho",8:"agosto",9:"setembro",10:"outubro",11:"novembro",12:"dezembro"}
     ds = f"{target_date.day} de {MONTHS[target_date.month]} de {target_date.year}"
     _center_text(draw, ds, 150, fonts["date"], GRAY)
