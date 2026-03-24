@@ -23,7 +23,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-gold text-lg font-display mb-3">2. Descricao do Servico</h2>
-            <p>A Astrara oferece servicos de calculo de mapas astrais natais e interpretacoes geradas por inteligencia artificial. O servico e fornecido pela Brain Legal LTDA, CNPJ [CNPJ].</p>
+            <p>A Astrara oferece servicos de calculo de mapas astrais natais e interpretacoes geradas por inteligencia artificial. O servico e fornecido pela Brain Legal LTDA, CNPJ 51.560.460/0001-05.</p>
           </section>
 
           <section>
@@ -95,7 +95,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-gold text-lg font-display mb-3">11. Legislacao Aplicavel</h2>
-            <p>Estes termos sao regidos pelas leis da Republica Federativa do Brasil. Fica eleito o foro da comarca de [cidade/estado] para dirimir quaisquer controversias.</p>
+            <p>Estes termos sao regidos pelas leis da Republica Federativa do Brasil. Fica eleito o foro da comarca de Sao Paulo/SP para dirimir quaisquer controversias.</p>
           </section>
 
           <section>

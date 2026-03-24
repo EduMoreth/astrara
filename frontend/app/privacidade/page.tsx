@@ -18,7 +18,7 @@ export default function PrivacyPolicyPage() {
         <div className="space-y-8 text-stardust/80 text-sm leading-relaxed">
           <section>
             <h2 className="text-gold text-lg font-display mb-3">1. Controlador dos Dados</h2>
-            <p>A <strong className="text-stardust">Brain Legal LTDA</strong> (&quot;Astrara&quot;, &quot;nos&quot;), inscrita no CNPJ sob o numero [CNPJ], com sede em [endereco], e a controladora dos dados pessoais coletados por meio do site www.astrara.online.</p>
+            <p>A <strong className="text-stardust">Brain Legal LTDA</strong> (&quot;Astrara&quot;, &quot;nos&quot;), inscrita no CNPJ sob o numero 51.560.460/0001-05, com sede em Avenida Paulista 1136, 16o andar, Sao Paulo/SP, e a controladora dos dados pessoais coletados por meio do site www.astrara.online.</p>
             <p className="mt-2">Encarregado de Protecao de Dados (DPO): Eduardo Moreth Loquez — contato: dpo@astrara.online</p>
           </section>
 
