@@ -1,10 +1,25 @@
 import json
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Header
+from fastapi.responses import Response
 from models.chart import ChartRequest
 from services.astro_service import generate_chart
 from services.geocoding_service import geocode
+from services.interpretation_service import generate_interpretation, generate_pdf
+from database import get_connection
 
 router = APIRouter(prefix="/chart", tags=["chart"])
+
+
+def get_optional_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
+    """Get user if token provided, None otherwise."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        from routers.auth import verify_token
+        return verify_token(authorization.replace("Bearer ", ""))
+    except Exception:
+        return None
 
 
 @router.post("/generate")
@@ -43,3 +58,99 @@ async def generate(data: ChartRequest):
             "display_name": coords.get("display_name", ""),
         },
     }
+
+
+@router.get("/interpretation-product")
+async def get_interpretation_product():
+    """Get the default interpretation product info for the CTA button."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, name, description, price_cents
+        FROM products
+        WHERE type = 'one_time' AND active = true AND name ILIKE '%%interpreta%%'
+        ORDER BY created_at ASC LIMIT 1
+    """)
+    product = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not product:
+        return {"id": None, "name": "Interpretacao Completa", "price_cents": 2990}
+
+    return {
+        "id": str(product["id"]),
+        "name": product["name"],
+        "description": product["description"],
+        "price_cents": product["price_cents"],
+    }
+
+
+@router.post("/interpretation/{chart_id}/pdf")
+async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = Header(None)):
+    """Generate and return the interpretation PDF. Requires auth + credits/purchase."""
+    user = get_optional_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login necessario")
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Get the chart
+    cur.execute("SELECT * FROM charts WHERE id = %s", (chart_id,))
+    chart_data = cur.fetchone()
+    if not chart_data:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Mapa nao encontrado")
+
+    # Check if user has credits or has purchased
+    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user["sub"],))
+    credits = cur.fetchone()
+    has_credits = credits and credits["credits_balance"] > 0
+
+    cur.execute("""
+        SELECT id FROM purchases
+        WHERE user_id = %s AND status = 'completed'
+        ORDER BY created_at DESC LIMIT 1
+    """, (user["sub"],))
+    has_purchase = cur.fetchone() is not None
+
+    if not has_credits and not has_purchase:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=402, detail="Creditos insuficientes. Adquira creditos para desbloquear a interpretacao.")
+
+    # Deduct credit if using credits
+    if has_credits:
+        cur.execute("""
+            UPDATE user_credits SET credits_balance = credits_balance - 1,
+                                    total_used = total_used + 1,
+                                    updated_at = NOW()
+            WHERE user_id = %s
+        """, (user["sub"],))
+        cur.execute("""
+            INSERT INTO credit_transactions (user_id, type, amount, description)
+            VALUES (%s, 'use', -1, 'Interpretacao do mapa astral')
+        """, (user["sub"],))
+        conn.commit()
+
+    cur.close()
+    conn.close()
+
+    positions = chart_data.get("positions_json") or {}
+    name = chart_data.get("name", "")
+
+    # Generate interpretation
+    interpretation_text = generate_interpretation(positions, name)
+
+    # Generate PDF
+    pdf_bytes = generate_pdf(name, positions, interpretation_text)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="astrara-mapa-{name.lower().replace(" ", "-")}.pdf"'
+        },
+    )

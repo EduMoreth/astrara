@@ -13,3 +13,5 @@ httpx
 timezonefinder
 stripe
 bcrypt
+reportlab
+anthropic

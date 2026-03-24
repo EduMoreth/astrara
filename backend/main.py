@@ -61,11 +61,41 @@ def create_admin_if_needed():
         print(f"Warning: Could not create admin user: {e}")
 
 
+def seed_default_products():
+    """Create default interpretation product if none exists."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM products WHERE type = 'one_time' AND name ILIKE '%interpreta%' LIMIT 1")
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return
+
+        cur.execute("""
+            INSERT INTO products (name, description, type, price_cents, credits, active)
+            VALUES (%s, %s, %s, %s, %s, true)
+        """, (
+            "Interpretacao Completa do Mapa Astral",
+            "Analise profunda de cada planeta, casa e aspecto do seu mapa natal gerada por IA. Inclui PDF para download.",
+            "one_time",
+            2990,
+            1,
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("Default interpretation product created (R$ 29,90)")
+    except Exception as e:
+        print(f"Warning: Could not seed products: {e}")
+
+
 @app.on_event("startup")
 async def startup():
     try:
         init_db()
         create_admin_if_needed()
+        seed_default_products()
     except Exception as e:
         print(f"Warning: Could not initialize database: {e}")
         print("Running without database connection.")

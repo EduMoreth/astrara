@@ -10,14 +10,28 @@ import ChartWheel from '@/components/ChartWheel'
 import PlanetTable from '@/components/PlanetTable'
 import { generateChart, createCheckout, ChartResponse } from '@/lib/api'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.up.railway.app'
+
+interface InterpProduct {
+  id: string | null
+  name: string
+  price_cents: number
+}
+
 export default function ChartPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ChartResponse | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [interpProduct, setInterpProduct] = useState<InterpProduct | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('astrara_token')
     setIsLoggedIn(!!token)
+    // Fetch interpretation product info
+    fetch(`${API_URL}/chart/interpretation-product`)
+      .then(r => r.json())
+      .then(setInterpProduct)
+      .catch(() => {})
   }, [])
 
   async function handleSubmit(data: {
@@ -195,8 +209,12 @@ export default function ChartPage() {
                       {isLoggedIn ? (
                         <button
                           onClick={async () => {
+                            if (!interpProduct?.id) {
+                              toast.error('Produto de interpretacao nao configurado')
+                              return
+                            }
                             try {
-                              const { checkout_url } = await createCheckout('interpretation')
+                              const { checkout_url } = await createCheckout(interpProduct.id)
                               window.location.href = checkout_url
                             } catch (err: unknown) {
                               const msg = err instanceof Error ? err.message : 'Erro ao iniciar pagamento'
@@ -205,7 +223,7 @@ export default function ChartPage() {
                           }}
                           className="btn-primary text-sm"
                         >
-                          Desbloquear interpretacao — R$ 29,90 &rarr;
+                          Desbloquear interpretacao — R$ {interpProduct ? (interpProduct.price_cents / 100).toFixed(2).replace('.', ',') : '29,90'} &rarr;
                         </button>
                       ) : (
                         <>
