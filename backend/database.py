@@ -92,6 +92,27 @@ def init_db():
         );
     """)
 
+    # Add plan feature columns to products (migration-safe)
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE products ADD COLUMN IF NOT EXISTS max_saved_charts INTEGER DEFAULT 0;
+            ALTER TABLE products ADD COLUMN IF NOT EXISTS recurrence VARCHAR(20) DEFAULT 'none';
+            ALTER TABLE products ADD COLUMN IF NOT EXISTS stripe_subscription_price_id VARCHAR(255);
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
+    """)
+
+    # Add subscription tracking to users
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_product_id UUID;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_stripe_id VARCHAR(255);
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(30) DEFAULT 'none';
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS max_saved_charts INTEGER DEFAULT 1;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
+    """)
+
     # ── User Credits ─────────────────────────────────────
     cur.execute("""
         CREATE TABLE IF NOT EXISTS user_credits (

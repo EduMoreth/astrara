@@ -64,6 +64,8 @@ export default function ChartPage() {
     country: string
   }) {
     setLoading(true)
+    // Save form data for later use by save endpoint
+    sessionStorage.setItem('astrara_last_form', JSON.stringify(data))
     try {
       const res = await generateChart(data)
       setResult(res as ChartResponse)
@@ -290,54 +292,97 @@ export default function ChartPage() {
                 {/* Chart wheel */}
                 <div>
                   <ChartWheel positions={result.positions} houses={result.houses} aspects={result.aspects} />
-                  <div className="flex justify-center gap-3 mt-6">
-                    <button
-                      onClick={() => {
-                        const svgEl = document.querySelector('.chart-wheel-svg')
-                        if (!svgEl) { toast.error('Mandala nao encontrada'); return }
-                        const svgData = new XMLSerializer().serializeToString(svgEl)
-                        const blob = new Blob([svgData], { type: 'image/svg+xml' })
-                        const url = URL.createObjectURL(blob)
-                        const a = document.createElement('a')
-                        a.href = url
-                        a.download = 'astrara-mandala.svg'
-                        a.click()
-                        URL.revokeObjectURL(url)
-                        toast.success('Mandala salva!')
-                      }}
-                      className="btn-secondary text-sm"
-                    >
-                      Salvar SVG
-                    </button>
-                    <button
-                      onClick={() => {
-                        const svgEl = document.querySelector('.chart-wheel-svg') as SVGSVGElement
-                        if (!svgEl) { toast.error('Mandala nao encontrada'); return }
-                        const svgData = new XMLSerializer().serializeToString(svgEl)
-                        const canvas = document.createElement('canvas')
-                        canvas.width = 1200
-                        canvas.height = 1200
-                        const ctx = canvas.getContext('2d')
-                        if (!ctx) return
-                        // Dark background
-                        ctx.fillStyle = '#0A0A0F'
-                        ctx.fillRect(0, 0, 1200, 1200)
-                        const img = new Image()
-                        img.onload = () => {
-                          ctx.drawImage(img, 0, 0, 1200, 1200)
-                          const pngUrl = canvas.toDataURL('image/png')
-                          const a = document.createElement('a')
-                          a.href = pngUrl
-                          a.download = 'astrara-mandala.png'
-                          a.click()
-                          toast.success('Mandala salva como PNG!')
-                        }
-                        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
-                      }}
-                      className="btn-secondary text-sm"
-                    >
-                      Salvar PNG
-                    </button>
+                  {/* Save to account + Download options */}
+                  <div className="space-y-3 mt-6">
+                    {/* Save to DB button */}
+                    {isLoggedIn && (
+                      <div className="flex justify-center">
+                        <button
+                          onClick={async () => {
+                            const token = localStorage.getItem('astrara_token')
+                            if (!token) { toast.error('Faca login para salvar'); return }
+                            try {
+                              const formData = sessionStorage.getItem('astrara_last_form')
+                              const form = formData ? JSON.parse(formData) : {}
+                              const res = await fetch(`${API_URL}/user/charts/save`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({
+                                  name: form.name || 'Meu Mapa',
+                                  birth_date: form.year ? `${form.year}-${String(form.month).padStart(2,'0')}-${String(form.day).padStart(2,'0')}` : '2000-01-01',
+                                  birth_time: form.hour !== undefined ? `${String(form.hour).padStart(2,'0')}:${String(form.minute).padStart(2,'0')}` : '12:00',
+                                  birth_city: form.city || '',
+                                  birth_country: form.country || '',
+                                  positions_json: result?.positions || {},
+                                }),
+                              })
+                              if (!res.ok) {
+                                const err = await res.json()
+                                throw new Error(err.detail || 'Erro ao salvar')
+                              }
+                              const data = await res.json()
+                              toast.success(`Mapa salvo! (${data.saved_count}/${data.max_charts})`)
+                            } catch (err: unknown) {
+                              toast.error(err instanceof Error ? err.message : 'Erro ao salvar mapa')
+                            }
+                          }}
+                          className="btn-primary text-sm"
+                        >
+                          💾 Salvar mapa na minha conta
+                        </button>
+                      </div>
+                    )}
+                    {!isLoggedIn && (
+                      <p className="text-center text-muted text-xs">
+                        <Link href="/auth/register" className="text-gold hover:underline">Crie uma conta</Link> para salvar seus mapas
+                      </p>
+                    )}
+
+                    {/* Download options */}
+                    <div className="flex justify-center gap-2">
+                      <button
+                        onClick={() => {
+                          const svgEl = document.querySelector('.chart-wheel-svg')
+                          if (!svgEl) return
+                          const blob = new Blob([new XMLSerializer().serializeToString(svgEl)], { type: 'image/svg+xml' })
+                          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'astrara-mandala.svg'; a.click()
+                          toast.success('SVG baixado!')
+                        }}
+                        className="text-muted hover:text-stardust text-xs border border-gold/10 px-3 py-1.5 rounded-full hover:border-gold/30 transition-colors"
+                      >
+                        ↓ SVG
+                      </button>
+                      <button
+                        onClick={() => {
+                          const svgEl = document.querySelector('.chart-wheel-svg') as SVGSVGElement
+                          if (!svgEl) return
+                          const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 1200
+                          const ctx = canvas.getContext('2d'); if (!ctx) return
+                          ctx.fillStyle = '#0A0A0F'; ctx.fillRect(0, 0, 1200, 1200)
+                          const img = new Image()
+                          img.onload = () => { ctx.drawImage(img, 0, 0, 1200, 1200); const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = 'astrara-mandala.png'; a.click(); toast.success('PNG baixado!') }
+                          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(svgEl))))
+                        }}
+                        className="text-muted hover:text-stardust text-xs border border-gold/10 px-3 py-1.5 rounded-full hover:border-gold/30 transition-colors"
+                      >
+                        ↓ PNG
+                      </button>
+                      <button
+                        onClick={() => {
+                          const svgEl = document.querySelector('.chart-wheel-svg') as SVGSVGElement
+                          if (!svgEl) return
+                          const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 1200
+                          const ctx = canvas.getContext('2d'); if (!ctx) return
+                          ctx.fillStyle = '#0A0A0F'; ctx.fillRect(0, 0, 1200, 1200)
+                          const img = new Image()
+                          img.onload = () => { ctx.drawImage(img, 0, 0, 1200, 1200); const a = document.createElement('a'); a.href = canvas.toDataURL('image/jpeg', 0.95); a.download = 'astrara-mandala.jpg'; a.click(); toast.success('JPG baixado!') }
+                          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(svgEl))))
+                        }}
+                        className="text-muted hover:text-stardust text-xs border border-gold/10 px-3 py-1.5 rounded-full hover:border-gold/30 transition-colors"
+                      >
+                        ↓ JPG
+                      </button>
+                    </div>
                   </div>
                 </div>
 

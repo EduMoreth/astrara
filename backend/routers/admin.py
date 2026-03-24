@@ -425,9 +425,11 @@ async def list_products(admin: str = Depends(verify_admin_token)):
 class ProductCreateRequest(BaseModel):
     name: str
     description: Optional[str] = ""
-    type: str
+    type: str  # 'credits' (pack), 'one_time', 'subscription' (premium)
     price_cents: int
     credits: int = 0
+    max_saved_charts: int = 0
+    recurrence: str = "none"  # 'none', 'monthly', 'yearly'
     create_in_stripe: bool = True
 
 
@@ -441,7 +443,19 @@ async def create_product(data: ProductCreateRequest, request: Request,
         try:
             sp = create_stripe_product(data.name, data.description)
             stripe_product_id = sp.id
-            price = create_stripe_price(sp.id, data.price_cents)
+
+            if data.type == "subscription" and data.recurrence in ("monthly", "yearly"):
+                # Create recurring price for subscriptions
+                interval = "month" if data.recurrence == "monthly" else "year"
+                price = stripe.Price.create(
+                    product=sp.id,
+                    unit_amount=data.price_cents,
+                    currency="brl",
+                    recurring={"interval": interval},
+                )
+            else:
+                price = create_stripe_price(sp.id, data.price_cents)
+
             stripe_price_id = price.id
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Erro Stripe: {str(e)}")
@@ -449,10 +463,11 @@ async def create_product(data: ProductCreateRequest, request: Request,
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO products (name, description, type, price_cents, credits, stripe_product_id, stripe_price_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
+        INSERT INTO products (name, description, type, price_cents, credits,
+                              max_saved_charts, recurrence, stripe_product_id, stripe_price_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
     """, (data.name, data.description, data.type, data.price_cents, data.credits,
-          stripe_product_id, stripe_price_id))
+          data.max_saved_charts, data.recurrence, stripe_product_id, stripe_price_id))
     product_id = str(cur.fetchone()["id"])
     conn.commit()
     cur.close()

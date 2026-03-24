@@ -76,6 +76,23 @@ async def save_chart(
 ):
     conn = get_connection()
     cur = conn.cursor()
+
+    # Check saved charts limit
+    cur.execute("SELECT max_saved_charts FROM users WHERE id = %s", (user["sub"],))
+    user_row = cur.fetchone()
+    max_charts = user_row["max_saved_charts"] if user_row else 1
+
+    cur.execute("SELECT COUNT(*) as count FROM charts WHERE user_id = %s", (user["sub"],))
+    current_count = cur.fetchone()["count"]
+
+    if current_count >= max_charts:
+        cur.close()
+        conn.close()
+        raise HTTPException(
+            status_code=403,
+            detail=f"Limite de mapas salvos atingido ({max_charts}). Faca upgrade do seu plano para salvar mais mapas."
+        )
+
     cur.execute(
         """INSERT INTO charts
            (user_id, name, birth_date, birth_time, birth_city, birth_country,
@@ -101,7 +118,39 @@ async def save_chart(
     cur.close()
     conn.close()
 
-    return {"id": str(row["id"]), "message": "Mapa salvo com sucesso"}
+    return {"id": str(row["id"]), "message": "Mapa salvo com sucesso", "saved_count": current_count + 1, "max_charts": max_charts}
+
+
+@router.get("/charts/limit")
+async def get_charts_limit(user: dict = Depends(get_current_user)):
+    """Get current saved charts count and limit for the user."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT max_saved_charts FROM users WHERE id = %s", (user["sub"],))
+    user_row = cur.fetchone()
+    max_charts = user_row["max_saved_charts"] if user_row else 1
+
+    cur.execute("SELECT COUNT(*) as count FROM charts WHERE user_id = %s", (user["sub"],))
+    count = cur.fetchone()["count"]
+    cur.close()
+    conn.close()
+
+    return {"saved_count": count, "max_charts": max_charts, "can_save": count < max_charts}
+
+
+@router.delete("/charts/{chart_id}")
+async def delete_saved_chart(chart_id: str, user: dict = Depends(get_current_user)):
+    """Delete a saved chart to free up a slot."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM charts WHERE id = %s AND user_id = %s", (chart_id, user["sub"]))
+    deleted = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Mapa nao encontrado")
+    return {"success": True}
 
 
 @router.get("/credits")

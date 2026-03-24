@@ -12,7 +12,10 @@ export default function AdminProductsPage() {
   const [editDesc, setEditDesc] = useState('')
   const [editCredits, setEditCredits] = useState(0)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ name: '', description: '', type: 'credits', price_reais: '29.90', credits: 1, create_in_stripe: true })
+  const [form, setForm] = useState({
+    name: '', description: '', type: 'credits', price_reais: '29.90',
+    credits: 1, max_saved_charts: 0, recurrence: 'none', create_in_stripe: true,
+  })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const load = () => getProducts().then(setProducts).catch(() => toast.error('Erro ao carregar'))
@@ -49,9 +52,9 @@ export default function AdminProductsPage() {
   }
 
   const typeLabels: Record<string, string> = {
-    credits: 'Creditos',
+    credits: 'Pack de Creditos',
     one_time: 'Avulso',
-    subscription: 'Assinatura',
+    subscription: 'Plano Premium',
   }
 
   return (
@@ -94,6 +97,32 @@ export default function AdminProductsPage() {
               <input type="number" value={form.credits} onChange={e => setForm({ ...form, credits: Number(e.target.value) })} className="input-field w-full" />
             </div>
           </div>
+
+          {/* Subscription-specific fields */}
+          {form.type === 'subscription' && (
+            <div className="space-y-3 p-4 rounded-xl border border-violet/20 bg-violet/5">
+              <p className="text-violet text-xs font-medium uppercase tracking-wider">Configuracoes do Plano Premium</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-muted text-xs mb-1 block">Recorrencia</label>
+                  <select value={form.recurrence} onChange={e => setForm({ ...form, recurrence: e.target.value })} className="input-field w-full text-sm">
+                    <option value="monthly">Mensal</option>
+                    <option value="yearly">Anual</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-muted text-xs mb-1 block">Mapas salvos permitidos</label>
+                  <input type="number" value={form.max_saved_charts} onChange={e => setForm({ ...form, max_saved_charts: Number(e.target.value) })} className="input-field w-full" placeholder="Ex: 10" />
+                </div>
+              </div>
+              <p className="text-muted text-[10px]">Creditos sao renovados mensalmente. Mapas salvos definem o limite de armazenamento.</p>
+            </div>
+          )}
+
+          {/* Pack-specific hint */}
+          {form.type === 'credits' && (
+            <p className="text-muted text-xs">Pack avulso: usuario compra uma vez e recebe os creditos. Sem recorrencia.</p>
+          )}
           <label className="flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" checked={form.create_in_stripe} onChange={e => setForm({ ...form, create_in_stripe: e.target.checked })} className="accent-gold" />
             Criar no Stripe automaticamente
