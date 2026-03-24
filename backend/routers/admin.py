@@ -1261,6 +1261,40 @@ async def trigger_instagram_post(request: Request, admin: str = Depends(verify_a
     return {"success": result.get("status") != "failed", **result}
 
 
+@router.get("/instagram/test")
+async def test_instagram_credentials(admin: str = Depends(verify_admin_token)):
+    """Test if Instagram credentials are valid."""
+    import requests as req
+    ig_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
+    token = os.getenv("META_ACCESS_TOKEN") or os.getenv("META_ACESS_TOKEN")
+    backend_url = os.getenv("BACKEND_URL", "https://astrara-production.up.railway.app")
+
+    results = {
+        "instagram_account_id": ig_id[:6] + "..." if ig_id else "NOT SET",
+        "meta_token": token[:10] + "..." if token else "NOT SET",
+        "backend_url": backend_url,
+    }
+
+    if ig_id and token:
+        try:
+            r = req.get(f"https://graph.facebook.com/v21.0/{ig_id}?fields=username,name&access_token={token}", timeout=10)
+            data = r.json()
+            if "error" in data:
+                results["status"] = "error"
+                results["error"] = data["error"].get("message", str(data["error"]))
+            else:
+                results["status"] = "ok"
+                results["instagram_username"] = data.get("username", "")
+                results["instagram_name"] = data.get("name", "")
+        except Exception as e:
+            results["status"] = "error"
+            results["error"] = str(e)
+    else:
+        results["status"] = "missing_credentials"
+
+    return results
+
+
 @router.get("/instagram/posts/{post_date}")
 async def get_instagram_post(post_date: str, admin: str = Depends(verify_admin_token)):
     conn = get_connection()

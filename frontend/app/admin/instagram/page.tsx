@@ -109,6 +109,24 @@ export default function AdminInstagramPage() {
         <p className="text-muted text-xs mt-3">
           O scheduler automatico publica diariamente as 7h (Brasilia). Use este botao para testes ou republicacao.
         </p>
+        <button
+          onClick={async () => {
+            try {
+              const res = await fetch(`${API_URL}/admin/api/instagram/test`, { headers: getAdminHeaders() })
+              const data = await res.json()
+              if (data.status === 'ok') {
+                toast.success(`Credenciais OK! Instagram: @${data.instagram_username}`)
+              } else if (data.status === 'error') {
+                toast.error(`Erro: ${data.error}`)
+              } else {
+                toast.error(`Credenciais nao configuradas: ${JSON.stringify(data)}`)
+              }
+            } catch { toast.error('Erro ao testar') }
+          }}
+          className="text-muted hover:text-gold text-xs mt-2 underline"
+        >
+          Testar credenciais do Instagram
+        </button>
       </div>
 
       {/* Posts table */}

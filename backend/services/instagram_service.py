@@ -31,7 +31,13 @@ def upload_image_to_meta(image_path: str, caption: str) -> str:
 
     data = response.json()
     if "id" not in data:
-        raise Exception(f"Erro ao criar container de midia: {data}")
+        # Extract detailed error from Meta API
+        error_detail = data.get("error", {})
+        error_msg = error_detail.get("message", str(data))
+        error_type = error_detail.get("type", "")
+        error_code = error_detail.get("code", "")
+        full_error = f"Meta API error: [{error_code}] {error_type}: {error_msg} | image_url={image_url}"
+        raise Exception(full_error)
 
     return data["id"]
 
