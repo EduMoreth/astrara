@@ -77,10 +77,18 @@ async def save_chart(
     conn = get_connection()
     cur = conn.cursor()
 
-    # Check saved charts limit
-    cur.execute("SELECT max_saved_charts FROM users WHERE id = %s", (user["sub"],))
+    # Check saved charts limit based on plan
+    cur.execute("SELECT plan, max_saved_charts FROM users WHERE id = %s", (user["sub"],))
     user_row = cur.fetchone()
-    max_charts = user_row["max_saved_charts"] if user_row else 1
+    plan = user_row["plan"] if user_row else "free"
+
+    # Plan-based limits
+    if plan in ("superadmin", "admin"):
+        max_charts = 999999  # unlimited
+    elif plan == "pro" or plan == "premium":
+        max_charts = user_row.get("max_saved_charts", 10) if user_row else 10
+    else:
+        max_charts = 1  # free users
 
     cur.execute("SELECT COUNT(*) as count FROM charts WHERE user_id = %s", (user["sub"],))
     current_count = cur.fetchone()["count"]
@@ -88,10 +96,16 @@ async def save_chart(
     if current_count >= max_charts:
         cur.close()
         conn.close()
-        raise HTTPException(
-            status_code=403,
-            detail=f"Limite de mapas salvos atingido ({max_charts}). Faca upgrade do seu plano para salvar mais mapas."
-        )
+        if plan == "free":
+            raise HTTPException(
+                status_code=403,
+                detail="Voce atingiu o limite de 1 mapa salvo no plano gratuito. Delete o mapa atual ou faca upgrade para o plano Premium (ate 10 mapas)."
+            )
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Limite de {max_charts} mapas salvos atingido. Delete um mapa para salvar outro."
+            )
 
     cur.execute(
         """INSERT INTO charts
@@ -126,9 +140,16 @@ async def get_charts_limit(user: dict = Depends(get_current_user)):
     """Get current saved charts count and limit for the user."""
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT max_saved_charts FROM users WHERE id = %s", (user["sub"],))
+    cur.execute("SELECT plan, max_saved_charts FROM users WHERE id = %s", (user["sub"],))
     user_row = cur.fetchone()
-    max_charts = user_row["max_saved_charts"] if user_row else 1
+    plan = user_row["plan"] if user_row else "free"
+
+    if plan in ("superadmin", "admin"):
+        max_charts = 999999
+    elif plan in ("pro", "premium"):
+        max_charts = user_row.get("max_saved_charts", 10) if user_row else 10
+    else:
+        max_charts = 1
 
     cur.execute("SELECT COUNT(*) as count FROM charts WHERE user_id = %s", (user["sub"],))
     count = cur.fetchone()["count"]
