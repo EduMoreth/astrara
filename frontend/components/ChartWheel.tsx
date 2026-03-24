@@ -187,10 +187,10 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
         <circle cx={cx} cy={cy} r={outerR + 10} fill="url(#bgGrad)" />
 
         {/* Rings */}
-        <circle cx={cx} cy={cy} r={outerR} fill="none" stroke="rgba(201,169,110,0.3)" strokeWidth="1.5" />
-        <circle cx={cx} cy={cy} r={signBandR} fill="none" stroke="rgba(201,169,110,0.1)" strokeWidth="0.5" />
-        <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="rgba(201,169,110,0.25)" strokeWidth="1" />
-        <circle cx={cx} cy={cy} r={centerR} fill="none" stroke="rgba(123,94,167,0.2)" strokeWidth="0.5" />
+        <circle cx={cx} cy={cy} r={outerR} fill="none" stroke="rgba(201,169,110,0.4)" strokeWidth="1.5" />
+        <circle cx={cx} cy={cy} r={signBandR} fill="none" stroke="rgba(201,169,110,0.15)" strokeWidth="0.5" />
+        <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="rgba(201,169,110,0.35)" strokeWidth="1.2" />
+        <circle cx={cx} cy={cy} r={centerR} fill="none" stroke="rgba(123,94,167,0.25)" strokeWidth="0.7" />
 
         {/* Sign divisions and symbols */}
         {SIGN_ORDER.map((sign) => {
@@ -206,7 +206,7 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
             <g key={sign}>
               <line
                 x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                stroke="rgba(201,169,110,0.15)" strokeWidth="0.5"
+                stroke="rgba(201,169,110,0.25)" strokeWidth="0.7"
               />
               <text
                 x={sp.x} y={sp.y}
@@ -232,14 +232,14 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
             <g key={`house-${i}`}>
               <line
                 x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                stroke={isCardinal ? 'rgba(201,169,110,0.35)' : 'rgba(123,94,167,0.2)'}
-                strokeWidth={isCardinal ? '1' : '0.5'}
-                strokeDasharray={isCardinal ? 'none' : '3,3'}
+                stroke={isCardinal ? 'rgba(201,169,110,0.6)' : 'rgba(139,138,155,0.35)'}
+                strokeWidth={isCardinal ? '1.5' : '0.7'}
+                strokeDasharray={isCardinal ? 'none' : '4,4'}
               />
               <text
                 x={lp.x} y={lp.y}
                 textAnchor="middle" dominantBaseline="central"
-                fill="rgba(139,138,155,0.35)" fontSize="9"
+                fill="rgba(201,169,110,0.5)" fontSize="11" fontWeight="500"
               >
                 {i + 1}
               </text>

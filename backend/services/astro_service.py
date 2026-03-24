@@ -10,12 +10,13 @@ SIGN_ORDER = [
 SIGN_OFFSETS = {s: i * 30 for i, s in enumerate(SIGN_ORDER)}
 
 # Aspect definitions: name, exact_angle, orb_tolerance
+# Orbs match Astro.com defaults (generous for major aspects)
 ASPECT_DEFS = [
-    ("conjunction", 0, 8),
-    ("opposition", 180, 8),
-    ("trine", 120, 7),
-    ("square", 90, 7),
-    ("sextile", 60, 5),
+    ("conjunction", 0, 10),
+    ("opposition", 180, 10),
+    ("trine", 120, 8),
+    ("square", 90, 8),
+    ("sextile", 60, 6),
     ("quincunx", 150, 3),
     ("semisextile", 30, 2),
 ]
