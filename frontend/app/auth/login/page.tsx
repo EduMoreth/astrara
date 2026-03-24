@@ -77,7 +77,7 @@ export default function LoginPage() {
               <input
                 type="password"
                 className="input-field"
-                placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                placeholder="Sua senha"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
