@@ -211,24 +211,68 @@ def generate_pdf(name: str, positions: dict, interpretation: str) -> bytes:
     # Interpretation text
     story.append(Paragraph("Interpretacao Completa", section_style))
 
-    # Split interpretation into paragraphs
-    paragraphs = interpretation.strip().split('\n\n')
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
+    # Known section keywords that should be styled as headings
+    SECTION_KEYWORDS = [
+        "essencia", "emocoes", "emocional", "comunicacao", "amor", "acao",
+        "expansao", "disciplina", "inovacao", "intuicao", "transformacao",
+        "identidade", "carreira", "sintese", "conclusao", "ascendente",
+        "meio do ceu", "sol ", "lua ", "mercurio", "venus", "marte",
+        "jupiter", "saturno", "urano", "netuno", "plutao",
+    ]
+
+    def _is_section_title(line: str) -> bool:
+        """Detect if a line is a section title."""
+        stripped = line.strip().rstrip(':')
+        lower = stripped.lower()
+
+        # All-uppercase lines are titles (e.g., "COMUNICACAO - MERCURIO EM LEAO A 26 GRAUS:")
+        if stripped.isupper() and len(stripped) > 3:
+            return True
+
+        # Lines ending with : that contain known keywords
+        if line.strip().endswith(':'):
+            for kw in SECTION_KEYWORDS:
+                if kw in lower:
+                    return True
+
+        # Lines starting with known section patterns
+        for kw in SECTION_KEYWORDS:
+            if lower.startswith(kw):
+                # Must be short-ish (title, not a paragraph starting with keyword)
+                if len(stripped) < 80:
+                    return True
+
+        # Lines with " - " separator that are title-like
+        if ' - ' in line and len(stripped) < 80 and ':' in line:
+            return True
+
+        return False
+
+    # Split interpretation into lines and process
+    lines = interpretation.strip().split('\n')
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
             continue
-        # Check if it's a section title (ends with : and is short)
-        if ':' in para and len(para.split(':')[0]) < 40 and '\n' not in para.split(':')[0]:
-            parts = para.split(':', 1)
-            story.append(Paragraph(parts[0].strip(), section_style))
-            if len(parts) > 1 and parts[1].strip():
-                story.append(Paragraph(parts[1].strip(), body_style))
+
+        if _is_section_title(line):
+            # Remove trailing colon for cleaner display
+            title = line.rstrip(':').strip()
+            story.append(Paragraph(title, section_style))
         else:
-            # Regular paragraph
-            for line in para.split('\n'):
-                line = line.strip()
-                if line:
-                    story.append(Paragraph(line, body_style))
+            # Collect consecutive non-empty, non-title lines as one paragraph
+            para_lines = [line]
+            while i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if not next_line or _is_section_title(next_line):
+                    break
+                para_lines.append(next_line)
+                i += 1
+            story.append(Paragraph(' '.join(para_lines), body_style))
+
+        i += 1
 
     # Footer
     story.append(Spacer(1, 10*mm))
