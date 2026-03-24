@@ -71,14 +71,14 @@ const PLANET_NAME_MAP: Record<string, string> = {
 }
 
 // Aspect colors and styles
-const ASPECT_STYLES: Record<string, { color: string; dash?: string; opacity: number }> = {
-  conjunction: { color: '#C9A96E', opacity: 0.6 },
-  opposition: { color: '#E74C3C', dash: '6,3', opacity: 0.5 },
-  trine: { color: '#2ECC71', opacity: 0.4 },
-  square: { color: '#E74C3C', opacity: 0.35 },
-  sextile: { color: '#3498DB', dash: '4,4', opacity: 0.35 },
-  quincunx: { color: '#9B59B6', dash: '2,4', opacity: 0.25 },
-  semisextile: { color: '#9B59B6', dash: '2,4', opacity: 0.2 },
+const ASPECT_STYLES: Record<string, { color: string; dash?: string; opacity: number; width: number }> = {
+  conjunction: { color: '#FFD700', opacity: 1, width: 1.5 },
+  opposition: { color: '#FF4444', dash: '6,3', opacity: 0.9, width: 1.3 },
+  trine: { color: '#44FF88', opacity: 0.85, width: 1.2 },
+  square: { color: '#FF6644', opacity: 0.85, width: 1.2 },
+  sextile: { color: '#44AAFF', dash: '5,3', opacity: 0.8, width: 1 },
+  quincunx: { color: '#BB77FF', dash: '3,4', opacity: 0.7, width: 0.8 },
+  semisextile: { color: '#BB77FF', dash: '2,4', opacity: 0.6, width: 0.7 },
 }
 
 function toAbsoluteDeg(sign: string, deg: number): number {
@@ -254,7 +254,7 @@ export default function ChartWheel({ positions, houses, aspects }: Props) {
           const pos2 = polarToXY(cx, cy, aspectR, deg2)
 
           const aspectName = aspect.aspect?.toLowerCase() || ''
-          const style = ASPECT_STYLES[aspectName] || { color: '#8B8A9B', opacity: 0.15 }
+          const style = ASPECT_STYLES[aspectName] || { color: '#8B8A9B', opacity: 0.4, width: 0.8 }
 
           return (
             <line
@@ -262,7 +262,7 @@ export default function ChartWheel({ positions, houses, aspects }: Props) {
               x1={pos1.x} y1={pos1.y}
               x2={pos2.x} y2={pos2.y}
               stroke={style.color}
-              strokeWidth="0.8"
+              strokeWidth={String(style.width)}
               strokeDasharray={style.dash || 'none'}
               opacity={style.opacity}
             />

@@ -3,7 +3,7 @@ import httpx
 from database import get_connection
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "Astrara <noreply@astrara.online>")
+FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", os.getenv("FROM_EMAIL", "Astrara <noreply@astrara.online>"))
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://www.astrara.online")
 
 
