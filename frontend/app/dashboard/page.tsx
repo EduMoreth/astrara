@@ -171,6 +171,37 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="flex justify-center gap-3 mt-5">
+                    <button
+                      onClick={() => {
+                        // Save chart data to sessionStorage and navigate to /chart
+                        if (chart.positions_json) {
+                          sessionStorage.setItem('astrara_chart_result', JSON.stringify({
+                            positions: chart.positions_json,
+                            houses: [],
+                            aspects: [],
+                          }))
+                          // Save form data for display
+                          const [y, m, d] = (chart.birth_date || '').split('-')
+                          const [hr, mn] = (chart.birth_time || '12:00').split(':')
+                          sessionStorage.setItem('astrara_last_form', JSON.stringify({
+                            name: chart.name,
+                            year: parseInt(y || '2000'),
+                            month: parseInt(m || '1'),
+                            day: parseInt(d || '1'),
+                            hour: parseInt(hr || '12'),
+                            minute: parseInt(mn || '0'),
+                            city: chart.birth_city || '',
+                          }))
+                          router.push('/chart')
+                        } else {
+                          toast.error('Dados do mapa nao disponiveis')
+                        }
+                      }}
+                      className="text-gold hover:text-gold/80 text-xs transition-colors"
+                    >
+                      Ver mapa →
+                    </button>
+
                     {confirmDelete === chart.id ? (
                       <>
                         <button onClick={() => handleDelete(chart.id)} className="text-[#E74C3C] text-xs font-bold">Confirmar exclusao?</button>
