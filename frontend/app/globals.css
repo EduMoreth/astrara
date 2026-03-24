@@ -131,6 +131,18 @@ body {
     border-color: var(--gold);
   }
 
+  /* Select dropdowns — force dark background on native options */
+  select.input-field,
+  .input-field option {
+    background-color: #12121A;
+    color: #F0EDE8;
+  }
+
+  select.input-field option:checked {
+    background-color: #C9A96E;
+    color: #0A0A0F;
+  }
+
   .text-gradient-gold {
     background: linear-gradient(135deg, #C9A96E, #E8D5A3);
     -webkit-background-clip: text;

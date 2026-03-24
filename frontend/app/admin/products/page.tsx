@@ -2,10 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { getProducts, createProduct, toggleProduct, deleteProduct, AdminProduct } from '@/lib/admin-api'
+import { getProducts, createProduct, toggleProduct, deleteProduct, updateProduct, AdminProduct } from '@/lib/admin-api'
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<AdminProduct[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editPrice, setEditPrice] = useState('')
+  const [editName, setEditName] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [editCredits, setEditCredits] = useState(0)
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', type: 'credits', price_reais: '29.90', credits: 1, create_in_stripe: true })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
@@ -114,22 +119,64 @@ export default function AdminProductsPage() {
                 <div className={`w-4 h-4 rounded-full bg-white transition-transform ${p.active ? 'translate-x-5' : 'translate-x-0.5'}`} />
               </button>
             </div>
-            <p className="text-muted text-xs mb-3">{p.description}</p>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-gold text-lg font-display">R$ {(p.price_cents / 100).toFixed(2).replace('.', ',')}</span>
-                {p.credits > 0 && <span className="text-muted text-xs ml-2">{p.credits} credito{p.credits > 1 ? 's' : ''}</span>}
+            {editingId === p.id ? (
+              /* Edit mode */
+              <div className="space-y-3 mt-2">
+                <input value={editName} onChange={e => setEditName(e.target.value)} className="input-field w-full text-sm" placeholder="Nome" />
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} className="input-field w-full text-sm" rows={2} placeholder="Descricao" />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-muted text-[10px]">Preco (R$)</label>
+                    <input value={editPrice} onChange={e => setEditPrice(e.target.value)} className="input-field w-full text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-muted text-[10px]">Creditos</label>
+                    <input type="number" value={editCredits} onChange={e => setEditCredits(Number(e.target.value))} className="input-field w-full text-sm" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={async () => {
+                    const price_cents = Math.round(parseFloat(editPrice.replace(',', '.')) * 100)
+                    try {
+                      await updateProduct(p.id, { name: editName, description: editDesc, price_cents, credits: editCredits })
+                      toast.success('Produto atualizado')
+                      setEditingId(null)
+                      load()
+                    } catch { toast.error('Erro ao salvar') }
+                  }} className="btn-primary text-xs py-2 px-4">Salvar</button>
+                  <button onClick={() => setEditingId(null)} className="text-muted text-xs hover:text-stardust">Cancelar</button>
+                </div>
               </div>
-              {confirmDelete === p.id ? (
-                <button onClick={() => handleDelete(p.id)} className="text-[#E74C3C] text-xs font-bold">Confirmar?</button>
-              ) : (
-                <button onClick={() => setConfirmDelete(p.id)} className="text-muted hover:text-[#E74C3C] text-xs">Arquivar</button>
-              )}
-            </div>
-            {p.stripe_product_id && (
-              <div className="mt-2 text-muted text-[10px] font-mono truncate cursor-pointer" onClick={() => { navigator.clipboard.writeText(p.stripe_product_id!); toast.success('Copiado') }}>
-                Stripe: {p.stripe_product_id}
-              </div>
+            ) : (
+              /* View mode */
+              <>
+                <p className="text-muted text-xs mb-3">{p.description}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-gold text-lg font-display">R$ {(p.price_cents / 100).toFixed(2).replace('.', ',')}</span>
+                    {p.credits > 0 && <span className="text-muted text-xs ml-2">{p.credits} credito{p.credits > 1 ? 's' : ''}</span>}
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => {
+                      setEditingId(p.id)
+                      setEditName(p.name)
+                      setEditDesc(p.description || '')
+                      setEditPrice((p.price_cents / 100).toFixed(2).replace('.', ','))
+                      setEditCredits(p.credits)
+                    }} className="text-gold text-xs hover:underline">Editar</button>
+                    {confirmDelete === p.id ? (
+                      <button onClick={() => handleDelete(p.id)} className="text-[#E74C3C] text-xs font-bold">Confirmar?</button>
+                    ) : (
+                      <button onClick={() => setConfirmDelete(p.id)} className="text-muted hover:text-[#E74C3C] text-xs">Arquivar</button>
+                    )}
+                  </div>
+                </div>
+                {p.stripe_product_id && (
+                  <div className="mt-2 text-muted text-[10px] font-mono truncate cursor-pointer" onClick={() => { navigator.clipboard.writeText(p.stripe_product_id!); toast.success('Copiado') }}>
+                    Stripe: {p.stripe_product_id}
+                  </div>
+                )}
+              </>
             )}
           </div>
         ))}

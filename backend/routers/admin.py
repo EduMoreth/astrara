@@ -590,21 +590,41 @@ async def list_transactions(page: int = 1, limit: int = 20, status: str = "",
 
 @router.get("/revenue")
 async def get_revenue(admin: str = Depends(verify_admin_token)):
-    try:
-        monthly = get_monthly_revenue()
-        yearly = get_yearly_revenue()
-    except Exception:
-        monthly = 0
-        yearly = 0
-
     conn = get_connection()
     cur = conn.cursor()
+
+    # Monthly revenue from DB (accurate)
+    cur.execute("""
+        SELECT COALESCE(SUM(amount_cents), 0) as total FROM purchases
+        WHERE status = 'completed'
+        AND created_at >= DATE_TRUNC('month', NOW())
+    """)
+    monthly = cur.fetchone()["total"]
+
+    # Yearly revenue from DB
+    cur.execute("""
+        SELECT COALESCE(SUM(amount_cents), 0) as total FROM purchases
+        WHERE status = 'completed'
+        AND created_at >= DATE_TRUNC('year', NOW())
+    """)
+    yearly = cur.fetchone()["total"]
+
+    # Total refunded
+    cur.execute("SELECT COALESCE(SUM(amount_cents), 0) as total FROM refunds WHERE status = 'completed'")
+    refunded = cur.fetchone()["total"]
+
     cur.execute("SELECT COUNT(*) as total FROM purchases WHERE status = 'completed'")
     total_tx = cur.fetchone()["total"]
+
     cur.close()
     conn.close()
 
-    return {"monthly": monthly, "yearly": yearly, "total_transactions": total_tx}
+    return {
+        "monthly": monthly,
+        "yearly": yearly,
+        "total_transactions": total_tx,
+        "total_refunded": refunded,
+    }
 
 
 # ── Charts ───────────────────────────────────────────────────
@@ -969,61 +989,102 @@ async def admin_update_ticket_status(ticket_id: str, request: Request,
 # ── Financial Reports ────────────────────────────────────────
 
 @router.get("/reports/financial")
-async def financial_report(admin: str = Depends(verify_admin_token)):
+async def financial_report(
+    date_from: str = "", date_to: str = "",
+    admin: str = Depends(verify_admin_token),
+):
+    """Financial report with optional date range filter.
+    date_from, date_to: YYYY-MM-DD format. Empty = all time.
+    """
     conn = get_connection()
     cur = conn.cursor()
 
-    # Total revenue
-    cur.execute("SELECT COALESCE(SUM(amount_cents), 0) as total FROM purchases WHERE status = 'completed'")
+    # Build date filter
+    date_filter_p = ""
+    date_filter_r = ""
+    date_params_p: list = []
+    date_params_r: list = []
+
+    if date_from and date_to:
+        date_filter_p = "AND p.created_at >= %s AND p.created_at < %s::date + 1"
+        date_filter_r = "AND r.created_at >= %s AND r.created_at < %s::date + 1"
+        date_params_p = [date_from, date_to]
+        date_params_r = [date_from, date_to]
+    elif date_from:
+        date_filter_p = "AND p.created_at >= %s"
+        date_filter_r = "AND r.created_at >= %s"
+        date_params_p = [date_from]
+        date_params_r = [date_from]
+    elif date_to:
+        date_filter_p = "AND p.created_at < %s::date + 1"
+        date_filter_r = "AND r.created_at < %s::date + 1"
+        date_params_p = [date_to]
+        date_params_r = [date_to]
+
+    # Total revenue in period
+    cur.execute(f"""
+        SELECT COALESCE(SUM(amount_cents), 0) as total FROM purchases p
+        WHERE status = 'completed' {date_filter_p}
+    """, date_params_p)
     total_revenue = cur.fetchone()["total"]
 
-    # Total refunded
-    cur.execute("SELECT COALESCE(SUM(amount_cents), 0) as total FROM refunds WHERE status = 'completed'")
+    # Total refunded in period
+    cur.execute(f"""
+        SELECT COALESCE(SUM(amount_cents), 0) as total FROM refunds r
+        WHERE status = 'completed' {date_filter_r}
+    """, date_params_r)
     total_refunded = cur.fetchone()["total"]
 
-    # Net revenue
     net_revenue = total_revenue - total_refunded
 
-    # Monthly breakdown (last 12 months)
-    cur.execute("""
+    # Daily breakdown (for charts)
+    cur.execute(f"""
+        SELECT created_at::date as day,
+               COALESCE(SUM(amount_cents), 0) as revenue,
+               COUNT(*) as transactions
+        FROM purchases p
+        WHERE status = 'completed' {date_filter_p}
+        GROUP BY created_at::date
+        ORDER BY day DESC
+        LIMIT 365
+    """, date_params_p)
+    daily = cur.fetchall()
+
+    # Monthly breakdown
+    cur.execute(f"""
         SELECT DATE_TRUNC('month', created_at) as month,
                COALESCE(SUM(amount_cents), 0) as revenue,
                COUNT(*) as transactions
-        FROM purchases
-        WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '12 months'
+        FROM purchases p
+        WHERE status = 'completed' {date_filter_p}
         GROUP BY DATE_TRUNC('month', created_at)
         ORDER BY month DESC
-    """)
+    """, date_params_p)
     monthly = cur.fetchall()
 
-    # Refund rate
-    cur.execute("SELECT COUNT(*) as total FROM purchases WHERE status = 'completed'")
+    # Counts
+    cur.execute(f"SELECT COUNT(*) as total FROM purchases p WHERE status = 'completed' {date_filter_p}", date_params_p)
     total_purchases = cur.fetchone()["total"]
-    cur.execute("SELECT COUNT(*) as total FROM refunds WHERE status = 'completed'")
+    cur.execute(f"SELECT COUNT(*) as total FROM refunds r WHERE status = 'completed' {date_filter_r}", date_params_r)
     total_refund_count = cur.fetchone()["total"]
     refund_rate = (total_refund_count / total_purchases * 100) if total_purchases > 0 else 0
 
     # Top products
-    cur.execute("""
-        SELECT pr.name, COUNT(p.id) as sales, COALESCE(SUM(p.amount_cents), 0) as revenue
+    cur.execute(f"""
+        SELECT COALESCE(pr.name, p.product_type) as name,
+               COUNT(p.id) as sales,
+               COALESCE(SUM(p.amount_cents), 0) as revenue
         FROM purchases p
         LEFT JOIN products pr ON pr.type = p.product_type
-        WHERE p.status = 'completed'
-        GROUP BY pr.name
+        WHERE p.status = 'completed' {date_filter_p}
+        GROUP BY COALESCE(pr.name, p.product_type)
         ORDER BY revenue DESC
         LIMIT 10
-    """)
+    """, date_params_p)
     top_products = cur.fetchall()
 
     cur.close()
     conn.close()
-
-    try:
-        stripe_monthly = get_monthly_revenue()
-        stripe_yearly = get_yearly_revenue()
-    except Exception:
-        stripe_monthly = 0
-        stripe_yearly = 0
 
     return {
         "total_revenue": total_revenue,
@@ -1032,8 +1093,7 @@ async def financial_report(admin: str = Depends(verify_admin_token)):
         "refund_rate": round(refund_rate, 2),
         "total_purchases": total_purchases,
         "total_refunds": total_refund_count,
-        "stripe_monthly": stripe_monthly,
-        "stripe_yearly": stripe_yearly,
+        "daily_breakdown": [{"day": str(d["day"]), "revenue": d["revenue"], "transactions": d["transactions"]} for d in daily],
         "monthly_breakdown": [{"month": str(m["month"])[:7], "revenue": m["revenue"], "transactions": m["transactions"]} for m in monthly],
         "top_products": [{"name": p["name"] or "N/A", "sales": p["sales"], "revenue": p["revenue"]} for p in top_products],
     }
