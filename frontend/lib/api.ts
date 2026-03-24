@@ -23,6 +23,9 @@ export interface ChartResponse {
 interface AuthResponse {
   access_token: string
   token_type: string
+  force_password_reset?: boolean
+  email?: string
+  message?: string
 }
 
 interface UserChart {
