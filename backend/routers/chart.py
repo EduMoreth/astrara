@@ -1,6 +1,6 @@
 import json
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from models.chart import ChartRequest
@@ -36,7 +36,7 @@ def get_optional_user(authorization: Optional[str] = Header(None)) -> Optional[d
 
 
 @router.post("/generate")
-async def generate(data: ChartRequest):
+async def generate(data: ChartRequest, request: Request = None, authorization: Optional[str] = Header(None)):
     try:
         coords = geocode(data.city, data.country)
     except ValueError as e:
@@ -59,6 +59,29 @@ async def generate(data: ChartRequest):
             status_code=500,
             detail=f"Erro ao calcular o mapa astral: {str(e)}",
         )
+
+    # Log chart generation (tracks ALL generations for admin metrics)
+    try:
+        user = get_optional_user(authorization)
+        user_id = user["sub"] if user else None
+        ip = request.client.host if request and request.client else None
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO chart_generations (user_id, name, birth_date, birth_time, birth_city, birth_country, lat, lng, ip_address)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            user_id, data.name,
+            f"{data.year}-{data.month:02d}-{data.day:02d}",
+            f"{data.hour:02d}:{data.minute:02d}",
+            data.city, data.country,
+            coords["lat"], coords["lng"], ip,
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Chart gen log error: {e}")
 
     return {
         "positions": result["positions"],

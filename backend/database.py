@@ -216,6 +216,23 @@ def init_db():
         );
     """)
 
+    # ── Chart Generation Log (tracks ALL generations, not just saved) ──
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS chart_generations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            name VARCHAR(100),
+            birth_date DATE,
+            birth_time TIME,
+            birth_city VARCHAR(150),
+            birth_country VARCHAR(100),
+            lat DECIMAL(9,6),
+            lng DECIMAL(9,6),
+            ip_address VARCHAR(50),
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
     # ── Instagram Posts ──────────────────────────────────
     cur.execute("""
         CREATE TABLE IF NOT EXISTS instagram_posts (

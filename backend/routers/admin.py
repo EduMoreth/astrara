@@ -123,11 +123,16 @@ async def get_stats(admin: str = Depends(verify_admin_token)):
     cur.execute("SELECT COUNT(*) as total FROM users WHERE created_at::date = %s", (today,))
     users_today = cur.fetchone()["total"]
 
+    # Saved charts
     cur.execute("SELECT COUNT(*) as total FROM charts")
-    total_charts = cur.fetchone()["total"]
+    total_saved_charts = cur.fetchone()["total"]
 
-    cur.execute("SELECT COUNT(*) as total FROM charts WHERE created_at::date = %s", (today,))
-    charts_today = cur.fetchone()["total"]
+    # Generated charts (all, including unsaved)
+    cur.execute("SELECT COUNT(*) as total FROM chart_generations")
+    total_generations = cur.fetchone()["total"]
+
+    cur.execute("SELECT COUNT(*) as total FROM chart_generations WHERE created_at::date = %s", (today,))
+    generations_today = cur.fetchone()["total"]
 
     cur.execute("SELECT COALESCE(SUM(credits_balance), 0) as total FROM user_credits")
     credits_circulation = cur.fetchone()["total"]
@@ -138,23 +143,31 @@ async def get_stats(admin: str = Depends(verify_admin_token)):
     cur.execute("SELECT COALESCE(SUM(total_used), 0) as total FROM user_credits")
     credits_used = cur.fetchone()["total"]
 
+    # Open tickets
+    cur.execute("SELECT COUNT(*) as total FROM tickets WHERE status = 'open'")
+    open_tickets = cur.fetchone()["total"]
+
+    # Monthly revenue from DB (accurate)
+    cur.execute("""
+        SELECT COALESCE(SUM(amount_cents), 0) as total FROM purchases
+        WHERE status = 'completed' AND created_at >= DATE_TRUNC('month', NOW())
+    """)
+    monthly_revenue = cur.fetchone()["total"]
+
     cur.close()
     conn.close()
-
-    try:
-        monthly_revenue = get_monthly_revenue()
-    except Exception:
-        monthly_revenue = 0
 
     return {
         "total_users": total_users,
         "users_today": users_today,
-        "total_charts": total_charts,
-        "charts_today": charts_today,
+        "total_generations": total_generations,
+        "generations_today": generations_today,
+        "total_saved_charts": total_saved_charts,
         "monthly_revenue": monthly_revenue,
         "credits_circulation": credits_circulation,
         "credits_sold": credits_sold,
         "credits_used": credits_used,
+        "open_tickets": open_tickets,
     }
 
 
@@ -686,6 +699,37 @@ async def list_charts(page: int = 1, limit: int = 20,
 
     return {
         "charts": [{**c, "id": str(c["id"]), "positions_json": None, "svg_data": None} for c in charts],
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit,
+    }
+
+
+@router.get("/generations")
+async def list_generations(page: int = 1, limit: int = 20,
+                           admin: str = Depends(verify_admin_token)):
+    """List ALL chart generations (including non-saved, anonymous)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    offset = (page - 1) * limit
+
+    cur.execute("""
+        SELECT cg.*, u.name as user_name, u.email as user_email
+        FROM chart_generations cg
+        LEFT JOIN users u ON u.id = cg.user_id
+        ORDER BY cg.created_at DESC
+        LIMIT %s OFFSET %s
+    """, (limit, offset))
+    gens = cur.fetchall()
+
+    cur.execute("SELECT COUNT(*) as total FROM chart_generations")
+    total = cur.fetchone()["total"]
+
+    cur.close()
+    conn.close()
+
+    return {
+        "generations": [{**g, "id": str(g["id"])} for g in gens],
         "total": total,
         "page": page,
         "pages": (total + limit - 1) // limit,
