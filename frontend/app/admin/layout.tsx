@@ -10,6 +10,8 @@ const NAV_ITEMS = [
   { href: '/admin/users', label: 'Usuarios', icon: '👥' },
   { href: '/admin/products', label: 'Produtos', icon: '📦' },
   { href: '/admin/transactions', label: 'Transacoes', icon: '💳' },
+  { href: '/admin/tickets', label: 'Tickets', icon: '🎫' },
+  { href: '/admin/reports', label: 'Relatorios', icon: '📊' },
   { href: '/admin/charts', label: 'Mapas', icon: '🔮' },
   { href: '/admin/config', label: 'Config', icon: '⚙️' },
   { href: '/admin/logs', label: 'Logs', icon: '📋' },

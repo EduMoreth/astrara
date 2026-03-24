@@ -139,13 +139,67 @@ def init_db():
         );
     """)
 
+    # ── Support Tickets ──────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tickets (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+            subject VARCHAR(200) NOT NULL,
+            status VARCHAR(30) DEFAULT 'open',
+            priority VARCHAR(20) DEFAULT 'normal',
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ticket_messages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            ticket_id UUID REFERENCES tickets(id) ON DELETE CASCADE,
+            sender_type VARCHAR(20) NOT NULL,
+            sender_id UUID,
+            sender_name VARCHAR(100),
+            message TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
+    # ── Refunds ──────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS refunds (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            purchase_id UUID REFERENCES purchases(id),
+            user_id UUID REFERENCES users(id),
+            admin_email VARCHAR(255),
+            amount_cents INTEGER NOT NULL,
+            reason VARCHAR(500),
+            stripe_refund_id VARCHAR(255),
+            status VARCHAR(30) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
+    # ── Email Logs ───────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS email_logs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            to_email VARCHAR(255) NOT NULL,
+            subject VARCHAR(255) NOT NULL,
+            template VARCHAR(100),
+            status VARCHAR(30) DEFAULT 'sent',
+            resend_id VARCHAR(255),
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
     cur.execute("""
         INSERT INTO system_config (key, value, description) VALUES
         ('ai_model', 'claude-sonnet-4-6', 'Modelo Anthropic utilizado nas interpretacoes'),
         ('credits_per_interpretation', '1', 'Creditos consumidos por interpretacao completa'),
         ('credits_per_synastry', '2', 'Creditos consumidos por sinastria'),
         ('free_credits_on_register', '0', 'Creditos gratis ao criar conta'),
-        ('maintenance_mode', 'false', 'Modo manutencao do sistema')
+        ('maintenance_mode', 'false', 'Modo manutencao do sistema'),
+        ('support_email', 'suporte@astrara.online', 'Email de suporte exibido para usuarios')
         ON CONFLICT (key) DO NOTHING;
     """)
 

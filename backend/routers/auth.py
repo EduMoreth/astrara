@@ -65,6 +65,14 @@ async def register(data: UserRegister):
     conn.close()
 
     token = create_token(str(user["id"]), user["name"], user["email"])
+
+    # Send welcome email (non-blocking)
+    try:
+        from services.email_service import send_welcome_email
+        send_welcome_email(user["email"], user["name"])
+    except Exception as e:
+        print(f"Welcome email error: {e}")
+
     return {"access_token": token, "token_type": "bearer"}
 
 

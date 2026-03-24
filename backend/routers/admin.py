@@ -1,6 +1,7 @@
 import os
 import json
 import secrets
+import stripe
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -18,6 +19,9 @@ from services.stripe_service import (
     get_yearly_revenue,
     get_payment_intents,
 )
+from services.email_service import send_refund_email, send_ticket_reply_email
+
+stripe.api_key = os.getenv("STRIPE_API_KEY")
 
 router = APIRouter(prefix="/admin/api", tags=["admin"])
 security = HTTPBasic()
@@ -711,6 +715,345 @@ async def get_logs(page: int = 1, limit: int = 50, action: str = "",
 
     return {
         "logs": [{**l, "id": str(l["id"])} for l in logs],
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit,
+    }
+
+
+# ── Refunds / Churn ──────────────────────────────────────────
+
+class RefundRequest(BaseModel):
+    reason: str = ""
+
+
+@router.post("/transactions/{purchase_id}/refund")
+async def refund_transaction(purchase_id: str, data: RefundRequest, request: Request,
+                             admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT p.*, u.name as user_name, u.email as user_email
+        FROM purchases p
+        LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.id = %s
+    """, (purchase_id,))
+    purchase = cur.fetchone()
+
+    if not purchase:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Transacao nao encontrada")
+
+    if purchase["status"] == "refunded":
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=400, detail="Transacao ja foi reembolsada")
+
+    # Refund via Stripe
+    stripe_refund_id = None
+    if purchase.get("stripe_payment_id"):
+        try:
+            # Get payment intent from checkout session
+            session = stripe.checkout.Session.retrieve(purchase["stripe_payment_id"])
+            if session.payment_intent:
+                refund = stripe.Refund.create(payment_intent=session.payment_intent, reason="requested_by_customer")
+                stripe_refund_id = refund.id
+        except Exception as e:
+            cur.close()
+            conn.close()
+            raise HTTPException(status_code=500, detail=f"Erro ao estornar no Stripe: {str(e)}")
+
+    # Update purchase status
+    cur.execute("UPDATE purchases SET status = 'refunded' WHERE id = %s", (purchase_id,))
+
+    # Remove credits that were added
+    if purchase.get("user_id"):
+        cur.execute("""
+            UPDATE user_credits SET credits_balance = GREATEST(credits_balance - 1, 0),
+                                    updated_at = NOW()
+            WHERE user_id = %s
+        """, (str(purchase["user_id"]),))
+
+        cur.execute("""
+            INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
+            VALUES (%s, 'refund', -1, %s, %s)
+        """, (str(purchase["user_id"]), f"Reembolso: {data.reason}", stripe_refund_id))
+
+    # Record refund
+    cur.execute("""
+        INSERT INTO refunds (purchase_id, user_id, admin_email, amount_cents, reason, stripe_refund_id, status)
+        VALUES (%s, %s, %s, %s, %s, %s, 'completed')
+    """, (purchase_id, str(purchase["user_id"]) if purchase.get("user_id") else None,
+          admin, purchase.get("amount_cents", 0), data.reason, stripe_refund_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    # Send refund email to user
+    if purchase.get("user_email"):
+        send_refund_email(
+            purchase["user_email"],
+            purchase.get("user_name", ""),
+            purchase.get("amount_cents", 0),
+            data.reason,
+        )
+
+    log_action(admin, "refund_transaction", "purchase", purchase_id,
+               {"amount_cents": purchase.get("amount_cents"), "reason": data.reason, "stripe_refund_id": stripe_refund_id},
+               request.client.host if request.client else None)
+
+    return {"success": True, "stripe_refund_id": stripe_refund_id}
+
+
+@router.get("/refunds")
+async def list_refunds(page: int = 1, limit: int = 20, admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+    offset = (page - 1) * limit
+
+    cur.execute("""
+        SELECT r.*, u.name as user_name, u.email as user_email
+        FROM refunds r
+        LEFT JOIN users u ON u.id = r.user_id
+        ORDER BY r.created_at DESC
+        LIMIT %s OFFSET %s
+    """, (limit, offset))
+    refunds = cur.fetchall()
+
+    cur.execute("SELECT COUNT(*) as total FROM refunds")
+    total = cur.fetchone()["total"]
+
+    cur.close()
+    conn.close()
+
+    return {
+        "refunds": [{**r, "id": str(r["id"])} for r in refunds],
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit,
+    }
+
+
+# ── Admin Ticket Management ──────────────────────────────────
+
+@router.get("/tickets")
+async def admin_list_tickets(page: int = 1, limit: int = 20, status: str = "",
+                             admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+    offset = (page - 1) * limit
+
+    where = "WHERE t.status = %s" if status else ""
+    params = [status] if status else []
+
+    cur.execute(f"""
+        SELECT t.*, u.name as user_name, u.email as user_email,
+               (SELECT COUNT(*) FROM ticket_messages tm WHERE tm.ticket_id = t.id) as message_count
+        FROM tickets t
+        LEFT JOIN users u ON u.id = t.user_id
+        {where}
+        ORDER BY t.updated_at DESC
+        LIMIT %s OFFSET %s
+    """, params + [limit, offset])
+    tickets = cur.fetchall()
+
+    cur.execute(f"SELECT COUNT(*) as total FROM tickets t {where}", params)
+    total = cur.fetchone()["total"]
+
+    cur.close()
+    conn.close()
+
+    return {
+        "tickets": [{**t, "id": str(t["id"])} for t in tickets],
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit,
+    }
+
+
+@router.get("/tickets/{ticket_id}")
+async def admin_get_ticket(ticket_id: str, admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT t.*, u.name as user_name, u.email as user_email
+        FROM tickets t
+        LEFT JOIN users u ON u.id = t.user_id
+        WHERE t.id = %s
+    """, (ticket_id,))
+    ticket = cur.fetchone()
+    if not ticket:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Ticket nao encontrado")
+
+    cur.execute("SELECT * FROM ticket_messages WHERE ticket_id = %s ORDER BY created_at ASC", (ticket_id,))
+    messages = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return {
+        "ticket": {**ticket, "id": str(ticket["id"])},
+        "messages": [{**m, "id": str(m["id"])} for m in messages],
+    }
+
+
+class AdminTicketReply(BaseModel):
+    message: str
+
+
+@router.post("/tickets/{ticket_id}/reply")
+async def admin_reply_ticket(ticket_id: str, data: AdminTicketReply, request: Request,
+                             admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT t.subject, u.email as user_email, u.name as user_name
+        FROM tickets t
+        LEFT JOIN users u ON u.id = t.user_id
+        WHERE t.id = %s
+    """, (ticket_id,))
+    ticket = cur.fetchone()
+    if not ticket:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404)
+
+    cur.execute("""
+        INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message)
+        VALUES (%s, 'admin', NULL, %s, %s)
+    """, (ticket_id, "Equipe Astrara", data.message))
+
+    cur.execute("UPDATE tickets SET updated_at = NOW() WHERE id = %s", (ticket_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    # Notify user by email
+    if ticket.get("user_email"):
+        send_ticket_reply_email(
+            ticket["user_email"],
+            ticket.get("user_name", ""),
+            ticket.get("subject", ""),
+            data.message,
+        )
+
+    log_action(admin, "reply_ticket", "ticket", ticket_id, ip=request.client.host if request.client else None)
+    return {"success": True}
+
+
+@router.patch("/tickets/{ticket_id}/status")
+async def admin_update_ticket_status(ticket_id: str, request: Request,
+                                     admin: str = Depends(verify_admin_token)):
+    body = await request.json()
+    new_status = body.get("status", "closed")
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE tickets SET status = %s, updated_at = NOW() WHERE id = %s", (new_status, ticket_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    log_action(admin, "update_ticket_status", "ticket", ticket_id, {"status": new_status},
+               request.client.host if request.client else None)
+    return {"success": True}
+
+
+# ── Financial Reports ────────────────────────────────────────
+
+@router.get("/reports/financial")
+async def financial_report(admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Total revenue
+    cur.execute("SELECT COALESCE(SUM(amount_cents), 0) as total FROM purchases WHERE status = 'completed'")
+    total_revenue = cur.fetchone()["total"]
+
+    # Total refunded
+    cur.execute("SELECT COALESCE(SUM(amount_cents), 0) as total FROM refunds WHERE status = 'completed'")
+    total_refunded = cur.fetchone()["total"]
+
+    # Net revenue
+    net_revenue = total_revenue - total_refunded
+
+    # Monthly breakdown (last 12 months)
+    cur.execute("""
+        SELECT DATE_TRUNC('month', created_at) as month,
+               COALESCE(SUM(amount_cents), 0) as revenue,
+               COUNT(*) as transactions
+        FROM purchases
+        WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '12 months'
+        GROUP BY DATE_TRUNC('month', created_at)
+        ORDER BY month DESC
+    """)
+    monthly = cur.fetchall()
+
+    # Refund rate
+    cur.execute("SELECT COUNT(*) as total FROM purchases WHERE status = 'completed'")
+    total_purchases = cur.fetchone()["total"]
+    cur.execute("SELECT COUNT(*) as total FROM refunds WHERE status = 'completed'")
+    total_refund_count = cur.fetchone()["total"]
+    refund_rate = (total_refund_count / total_purchases * 100) if total_purchases > 0 else 0
+
+    # Top products
+    cur.execute("""
+        SELECT pr.name, COUNT(p.id) as sales, COALESCE(SUM(p.amount_cents), 0) as revenue
+        FROM purchases p
+        LEFT JOIN products pr ON pr.type = p.product_type
+        WHERE p.status = 'completed'
+        GROUP BY pr.name
+        ORDER BY revenue DESC
+        LIMIT 10
+    """)
+    top_products = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    try:
+        stripe_monthly = get_monthly_revenue()
+        stripe_yearly = get_yearly_revenue()
+    except Exception:
+        stripe_monthly = 0
+        stripe_yearly = 0
+
+    return {
+        "total_revenue": total_revenue,
+        "total_refunded": total_refunded,
+        "net_revenue": net_revenue,
+        "refund_rate": round(refund_rate, 2),
+        "total_purchases": total_purchases,
+        "total_refunds": total_refund_count,
+        "stripe_monthly": stripe_monthly,
+        "stripe_yearly": stripe_yearly,
+        "monthly_breakdown": [{"month": str(m["month"])[:7], "revenue": m["revenue"], "transactions": m["transactions"]} for m in monthly],
+        "top_products": [{"name": p["name"] or "N/A", "sales": p["sales"], "revenue": p["revenue"]} for p in top_products],
+    }
+
+
+# ── Email Logs ───────────────────────────────────────────────
+
+@router.get("/emails")
+async def list_emails(page: int = 1, limit: int = 20, admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+    offset = (page - 1) * limit
+    cur.execute("SELECT * FROM email_logs ORDER BY created_at DESC LIMIT %s OFFSET %s", (limit, offset))
+    emails = cur.fetchall()
+    cur.execute("SELECT COUNT(*) as total FROM email_logs")
+    total = cur.fetchone()["total"]
+    cur.close()
+    conn.close()
+    return {
+        "emails": [{**e, "id": str(e["id"])} for e in emails],
         "total": total,
         "page": page,
         "pages": (total + limit - 1) // limit,

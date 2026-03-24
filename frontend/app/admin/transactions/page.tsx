@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { getTransactions, getRevenue } from '@/lib/admin-api'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.up.railway.app'
+
 export default function AdminTransactionsPage() {
   const [transactions, setTransactions] = useState<Record<string, unknown>[]>([])
   const [total, setTotal] = useState(0)
@@ -45,7 +47,7 @@ export default function AdminTransactionsPage() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gold/10">
-              {['Data', 'Usuario', 'Tipo', 'Valor', 'Status', 'Stripe ID'].map(h => (
+              {['Data', 'Usuario', 'Tipo', 'Valor', 'Status', 'Stripe ID', 'Acoes'].map(h => (
                 <th key={h} className="text-left text-xs text-muted font-normal px-4 py-3 uppercase tracking-wider">{h}</th>
               ))}
             </tr>
@@ -66,12 +68,39 @@ export default function AdminTransactionsPage() {
                 </td>
                 <td className="px-4 py-3 text-muted text-[10px] font-mono cursor-pointer"
                     onClick={() => { navigator.clipboard.writeText(t.stripe_payment_id as string); toast.success('Copiado') }}>
-                  {(t.stripe_payment_id as string)?.slice(0, 25)}...
+                  {(t.stripe_payment_id as string)?.slice(0, 20)}...
+                </td>
+                <td className="px-4 py-3">
+                  {t.status === 'completed' && (
+                    <button
+                      onClick={async () => {
+                        const reason = prompt('Motivo do reembolso:')
+                        if (!reason) return
+                        const token = localStorage.getItem('admin_token')
+                        const res = await fetch(`${API_URL}/admin/api/transactions/${t.id}/refund`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ reason }),
+                        })
+                        if (res.ok) {
+                          toast.success('Reembolso processado + email enviado')
+                          getTransactions(page).then(r => { setTransactions(r.transactions); setTotal(r.total); setPages(r.pages) })
+                        } else {
+                          const err = await res.json()
+                          toast.error(err.detail || 'Erro no reembolso')
+                        }
+                      }}
+                      className="text-[#E74C3C] text-xs hover:underline"
+                    >
+                      Estornar
+                    </button>
+                  )}
+                  {t.status === 'refunded' && <span className="text-[#E74C3C] text-[10px]">Estornado</span>}
                 </td>
               </tr>
             ))}
             {transactions.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">Nenhuma transacao</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted">Nenhuma transacao</td></tr>
             )}
           </tbody>
         </table>
