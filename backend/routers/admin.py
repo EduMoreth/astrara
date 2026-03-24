@@ -275,11 +275,20 @@ async def get_user(user_id: str, admin: str = Depends(verify_admin_token)):
     cur.execute("SELECT * FROM charts WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
     charts = cur.fetchall()
 
-    cur.execute("SELECT * FROM purchases WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
+    cur.execute("""
+        SELECT p.*, pr.name as product_name
+        FROM purchases p
+        LEFT JOIN products pr ON pr.type = p.product_type
+        WHERE p.user_id = %s ORDER BY p.created_at DESC
+    """, (user_id,))
     purchases = cur.fetchall()
 
     cur.execute("SELECT * FROM credit_transactions WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
     transactions = cur.fetchall()
+
+    # Chart generations (all, including unsaved)
+    cur.execute("SELECT * FROM chart_generations WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
+    generations = cur.fetchall()
 
     cur.close()
     conn.close()
@@ -290,6 +299,7 @@ async def get_user(user_id: str, admin: str = Depends(verify_admin_token)):
         "charts": [{**c, "id": str(c["id"])} for c in charts],
         "purchases": [{**p, "id": str(p["id"])} for p in purchases],
         "credit_transactions": [{**t, "id": str(t["id"])} for t in transactions],
+        "generations": [{**g, "id": str(g["id"])} for g in generations],
     }
 
 
@@ -394,9 +404,10 @@ async def manage_credits(user_id: str, data: CreditRequest, request: Request,
         """, (data.amount, data.amount, user_id))
 
     cur.execute("""
-        INSERT INTO credit_transactions (user_id, admin_id, type, amount, description)
-        VALUES (%s, NULL, %s, %s, %s)
-    """, (user_id, "manual_add" if data.type == "add" else "manual_remove", amount, data.reason))
+        INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (user_id, "manual_add" if data.type == "add" else "manual_remove", amount,
+          f"{data.reason} (admin: {admin})", admin))
 
     conn.commit()
     cur.close()

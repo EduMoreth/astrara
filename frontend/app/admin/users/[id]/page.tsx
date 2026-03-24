@@ -52,7 +52,7 @@ export default function AdminUserDetail() {
     } catch { toast.error('Erro ao gerenciar creditos') }
   }
 
-  const TABS = ['dados', 'creditos', 'mapas', 'compras']
+  const TABS = ['dados', 'creditos', 'mapas', 'atividade', 'compras']
 
   return (
     <div className="space-y-6">
@@ -185,12 +185,42 @@ export default function AdminUserDetail() {
         </div>
       )}
 
+      {tab === 'atividade' && (
+        <div className="glass-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-gold/10">
+            <h3 className="text-stardust text-sm">Mapas gerados ({((data.generations || []) as Record<string, unknown>[]).length})</h3>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gold/10">
+                {['Data', 'Nome', 'Nascimento', 'Cidade'].map(h => (
+                  <th key={h} className="text-left text-xs text-muted font-normal px-4 py-3">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {((data.generations || []) as Record<string, unknown>[]).map((g, i) => (
+                <tr key={i} className="border-b border-white/[0.03]">
+                  <td className="px-4 py-2 text-muted text-xs">{new Date(g.created_at as string).toLocaleString('pt-BR')}</td>
+                  <td className="px-4 py-2 text-stardust text-sm">{g.name as string}</td>
+                  <td className="px-4 py-2 text-muted text-xs">{g.birth_date as string}</td>
+                  <td className="px-4 py-2 text-muted text-xs">{g.birth_city as string}</td>
+                </tr>
+              ))}
+              {((data.generations || []) as Record<string, unknown>[]).length === 0 && (
+                <tr><td colSpan={4} className="px-4 py-6 text-center text-muted text-sm">Nenhuma geracao registrada</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {tab === 'compras' && (
         <div className="glass-card overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gold/10">
-                {['Data', 'Tipo', 'Valor', 'Status', 'Stripe ID'].map(h => (
+                {['Data', 'Produto', 'Valor', 'Status', 'Stripe ID'].map(h => (
                   <th key={h} className="text-left text-xs text-muted font-normal px-4 py-3">{h}</th>
                 ))}
               </tr>
@@ -199,9 +229,9 @@ export default function AdminUserDetail() {
               {purchases.map((p, i) => (
                 <tr key={i} className="border-b border-white/[0.03]">
                   <td className="px-4 py-2 text-muted text-xs">{new Date(p.created_at as string).toLocaleString('pt-BR')}</td>
-                  <td className="px-4 py-2 text-stardust text-xs">{p.product_type as string}</td>
+                  <td className="px-4 py-2 text-stardust text-xs">{(p.product_name as string) || (p.product_type as string)}</td>
                   <td className="px-4 py-2 text-stardust text-sm">R$ {((p.amount_cents as number) / 100).toFixed(2)}</td>
-                  <td className="px-4 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${p.status === 'completed' ? 'bg-[#2ECC71]/20 text-[#2ECC71]' : 'bg-[#F39C12]/20 text-[#F39C12]'}`}>{p.status as string}</span></td>
+                  <td className="px-4 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${p.status === 'completed' ? 'bg-[#2ECC71]/20 text-[#2ECC71]' : p.status === 'refunded' ? 'bg-[#E74C3C]/20 text-[#E74C3C]' : 'bg-[#F39C12]/20 text-[#F39C12]'}`}>{p.status as string}</span></td>
                   <td className="px-4 py-2 text-muted text-xs font-mono">{(p.stripe_payment_id as string)?.slice(0, 20)}</td>
                 </tr>
               ))}
