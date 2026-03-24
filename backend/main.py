@@ -62,30 +62,54 @@ def create_admin_if_needed():
 
 
 def seed_default_products():
-    """Create default interpretation product if none exists."""
+    """Create default interpretation product if none exists. Also creates in Stripe."""
     try:
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("SELECT id FROM products WHERE type = 'one_time' AND name ILIKE '%interpreta%' LIMIT 1")
-        if cur.fetchone():
+
+        # Check if product already exists
+        cur.execute("SELECT id, stripe_price_id FROM products WHERE type = 'one_time' AND name ILIKE '%%interpreta%%' LIMIT 1")
+        existing = cur.fetchone()
+
+        if existing and existing.get("stripe_price_id"):
             cur.close()
             conn.close()
             return
 
-        cur.execute("""
-            INSERT INTO products (name, description, type, price_cents, credits, active)
-            VALUES (%s, %s, %s, %s, %s, true)
-        """, (
-            "Interpretacao Completa do Mapa Astral",
-            "Analise profunda de cada planeta, casa e aspecto do seu mapa natal gerada por IA. Inclui PDF para download.",
-            "one_time",
-            2990,
-            1,
-        ))
+        name = "Interpretacao Completa do Mapa Astral"
+        description = "Analise profunda de cada planeta, casa e aspecto do seu mapa natal gerada por IA. Inclui PDF para download."
+        price_cents = 2990
+
+        # Create in Stripe
+        stripe_product_id = None
+        stripe_price_id = None
+        try:
+            from services.stripe_service import create_stripe_product, create_stripe_price
+            sp = create_stripe_product(name, description)
+            stripe_product_id = sp.id
+            price = create_stripe_price(sp.id, price_cents, "brl")
+            stripe_price_id = price.id
+            print(f"Stripe product created: {stripe_product_id} / price: {stripe_price_id}")
+        except Exception as e:
+            print(f"Warning: Could not create Stripe product: {e}")
+
+        if existing:
+            # Update existing product with Stripe IDs
+            cur.execute("""
+                UPDATE products SET stripe_product_id = %s, stripe_price_id = %s, updated_at = NOW()
+                WHERE id = %s
+            """, (stripe_product_id, stripe_price_id, existing["id"]))
+        else:
+            # Insert new product
+            cur.execute("""
+                INSERT INTO products (name, description, type, price_cents, credits, stripe_product_id, stripe_price_id, active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, true)
+            """, (name, description, "one_time", price_cents, 1, stripe_product_id, stripe_price_id))
+
         conn.commit()
         cur.close()
         conn.close()
-        print("Default interpretation product created (R$ 29,90)")
+        print(f"Default interpretation product ready (R$ 29,90)")
     except Exception as e:
         print(f"Warning: Could not seed products: {e}")
 

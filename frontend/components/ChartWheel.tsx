@@ -7,9 +7,17 @@ interface Position {
   deg: number
 }
 
+interface Aspect {
+  p1: string
+  p2: string
+  aspect: string
+  orbit: number
+}
+
 interface Props {
   positions: Record<string, Position>
   houses?: Array<{ sign: string; deg: number }>
+  aspects?: Aspect[]
 }
 
 // Kerykeion returns abbreviated sign names — map all variants to full names
@@ -52,6 +60,27 @@ const PLANET_SYMBOLS: Record<string, string> = {
   neptune: '\u2646', pluto: '\u2647',
 }
 
+// Normalize planet name from kerykeion (e.g., "Sun" -> "sun")
+const PLANET_NAME_MAP: Record<string, string> = {
+  Sun: 'sun', Moon: 'moon', Mercury: 'mercury', Venus: 'venus',
+  Mars: 'mars', Jupiter: 'jupiter', Saturn: 'saturn', Uranus: 'uranus',
+  Neptune: 'neptune', Pluto: 'pluto',
+  sun: 'sun', moon: 'moon', mercury: 'mercury', venus: 'venus',
+  mars: 'mars', jupiter: 'jupiter', saturn: 'saturn', uranus: 'uranus',
+  neptune: 'neptune', pluto: 'pluto',
+}
+
+// Aspect colors and styles
+const ASPECT_STYLES: Record<string, { color: string; dash?: string; opacity: number }> = {
+  conjunction: { color: '#C9A96E', opacity: 0.6 },
+  opposition: { color: '#E74C3C', dash: '6,3', opacity: 0.5 },
+  trine: { color: '#2ECC71', opacity: 0.4 },
+  square: { color: '#E74C3C', opacity: 0.35 },
+  sextile: { color: '#3498DB', dash: '4,4', opacity: 0.35 },
+  quincunx: { color: '#9B59B6', dash: '2,4', opacity: 0.25 },
+  semisextile: { color: '#9B59B6', dash: '2,4', opacity: 0.2 },
+}
+
 function toAbsoluteDeg(sign: string, deg: number): number {
   const norm = normSign(sign)
   return (SIGN_OFFSETS[norm] ?? 0) + deg
@@ -69,7 +98,7 @@ function spreadPlanets(items: { key: string; deg: number }[], minGap: number) {
     for (let i = 0; i < sorted.length; i++) {
       const next = sorted[(i + 1) % sorted.length]
       const curr = sorted[i]
-      let diff = ((next.deg - curr.deg) + 360) % 360
+      const diff = ((next.deg - curr.deg) + 360) % 360
       if (diff < minGap && diff > 0) {
         const nudge = (minGap - diff) / 2
         curr.deg = (curr.deg - nudge + 360) % 360
@@ -80,7 +109,7 @@ function spreadPlanets(items: { key: string; deg: number }[], minGap: number) {
   return sorted
 }
 
-export default function ChartWheel({ positions, houses }: Props) {
+export default function ChartWheel({ positions, houses, aspects }: Props) {
   const cx = 300
   const cy = 300
   const outerR = 275
@@ -88,6 +117,7 @@ export default function ChartWheel({ positions, houses }: Props) {
   const innerR = 215
   const planetR = 175
   const houseNumR = 135
+  const aspectR = 110 // radius for aspect lines (inside house numbers)
   const centerR = 55
 
   // Ascendant offset so AC is on the left (180 deg)
@@ -105,15 +135,21 @@ export default function ChartWheel({ positions, houses }: Props) {
     .map(([key, symbol]) => {
       const pos = positions[key]
       if (!pos) return null
-      return { key, symbol, deg: adj(pos.sign, pos.deg) }
+      return { key, symbol, deg: adj(pos.sign, pos.deg), realDeg: adj(pos.sign, pos.deg) }
     })
-    .filter(Boolean) as { key: string; symbol: string; deg: number }[]
+    .filter(Boolean) as { key: string; symbol: string; deg: number; realDeg: number }[]
 
   const spread = spreadPlanets(
     planetEntries.map(p => ({ key: p.key, deg: p.deg })),
     10
   )
   const planetMap = new Map(spread.map(s => [s.key, s.deg]))
+
+  // Build a map of planet real positions (before spread) for aspect lines
+  const planetRealDegMap = new Map<string, number>()
+  planetEntries.forEach(p => {
+    planetRealDegMap.set(p.key, p.realDeg)
+  })
 
   return (
     <motion.div
@@ -201,6 +237,35 @@ export default function ChartWheel({ positions, houses }: Props) {
                 {i + 1}
               </text>
             </g>
+          )
+        })}
+
+        {/* ── Aspect Lines ─────────────────────────────── */}
+        {aspects && aspects.length > 0 && aspects.map((aspect, i) => {
+          const p1Key = PLANET_NAME_MAP[aspect.p1] || aspect.p1.toLowerCase()
+          const p2Key = PLANET_NAME_MAP[aspect.p2] || aspect.p2.toLowerCase()
+
+          const deg1 = planetRealDegMap.get(p1Key)
+          const deg2 = planetRealDegMap.get(p2Key)
+
+          if (deg1 === undefined || deg2 === undefined) return null
+
+          const pos1 = polarToXY(cx, cy, aspectR, deg1)
+          const pos2 = polarToXY(cx, cy, aspectR, deg2)
+
+          const aspectName = aspect.aspect?.toLowerCase() || ''
+          const style = ASPECT_STYLES[aspectName] || { color: '#8B8A9B', opacity: 0.15 }
+
+          return (
+            <line
+              key={`aspect-${i}`}
+              x1={pos1.x} y1={pos1.y}
+              x2={pos2.x} y2={pos2.y}
+              stroke={style.color}
+              strokeWidth="0.8"
+              strokeDasharray={style.dash || 'none'}
+              opacity={style.opacity}
+            />
           )
         })}
 

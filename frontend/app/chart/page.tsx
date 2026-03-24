@@ -176,6 +176,7 @@ export default function ChartPage() {
                   <ChartWheel
                     positions={result.positions}
                     houses={result.houses}
+                    aspects={result.aspects}
                   />
 
                   <div className="flex justify-center mt-6">
