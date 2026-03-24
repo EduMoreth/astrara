@@ -36,15 +36,28 @@ export default function AdminInstagramPage() {
 
   async function handleTrigger() {
     setTriggering(true)
+    toast.info('Gerando conteudo com IA + imagem... isso pode levar ate 2 minutos.')
     try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 120000) // 2 min timeout
+
       const res = await fetch(`${API_URL}/admin/api/instagram/posts/trigger`, {
         method: 'POST',
         headers: getAdminHeaders(),
         body: JSON.stringify({ date: triggerDate }),
+        signal: controller.signal,
       })
+      clearTimeout(timeout)
+
       const data = await res.json()
       if (data.success) {
-        toast.success(`Post ${data.status === 'published' ? 'publicado' : data.status}!`)
+        if (data.status === 'published') {
+          toast.success('Post publicado no Instagram com sucesso!')
+        } else if (data.status === 'already_published') {
+          toast.info('Post de hoje ja foi publicado.')
+        } else {
+          toast.error(`Status: ${data.status} - ${data.error || ''}`)
+        }
         // Reload
         const reload = await fetch(`${API_URL}/admin/api/instagram/posts`, { headers: getAdminHeaders() })
         const reloadData = await reload.json()

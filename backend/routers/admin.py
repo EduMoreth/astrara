@@ -1235,19 +1235,30 @@ async def list_instagram_posts(page: int = 1, limit: int = 20,
 @router.post("/instagram/posts/trigger")
 async def trigger_instagram_post(request: Request, admin: str = Depends(verify_admin_token)):
     """Manually trigger the daily Instagram post."""
-    from services.daily_post_orchestrator import run_daily_instagram_post
     from datetime import date as date_type
 
-    body = await request.json()
-    target_str = body.get("date", str(date_type.today()))
-    target = date_type.fromisoformat(target_str)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
 
-    result = run_daily_instagram_post(target)
+    target_str = body.get("date", str(date_type.today()))
+
+    try:
+        target = date_type.fromisoformat(target_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Data invalida: {target_str}. Use formato YYYY-MM-DD.")
+
+    try:
+        from services.daily_post_orchestrator import run_daily_instagram_post
+        result = run_daily_instagram_post(target)
+    except Exception as e:
+        result = {"status": "failed", "error": str(e)}
 
     log_action(admin, "trigger_instagram_post", "instagram", target_str,
                result, ip=request.client.host if request.client else None)
 
-    return {"success": True, **result}
+    return {"success": result.get("status") != "failed", **result}
 
 
 @router.get("/instagram/posts/{post_date}")
