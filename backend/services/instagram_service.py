@@ -2,7 +2,7 @@ import requests
 import os
 
 INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
-ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN") or os.getenv("META_ACESS_TOKEN")
 GRAPH_URL = "https://graph.facebook.com/v21.0"
 
 
