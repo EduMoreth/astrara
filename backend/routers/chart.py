@@ -264,8 +264,22 @@ async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Op
             detail="Voce precisa comprar a interpretacao antes de baixar o PDF."
         )
 
-    # DON'T deduct credit here — credit was already added via checkout/verify
-    # Only deduct if we want to allow re-downloads consuming credits
+    # Consume 1 credit if user has credits
+    if has_credits:
+        cur.execute("""
+            UPDATE user_credits
+            SET credits_balance = credits_balance - 1,
+                total_used = total_used + 1,
+                updated_at = NOW()
+            WHERE user_id = %s AND credits_balance > 0
+        """, (user["sub"],))
+
+        cur.execute("""
+            INSERT INTO credit_transactions (user_id, type, amount, description)
+            VALUES (%s, 'use', -1, 'Interpretacao completa do mapa astral (PDF)')
+        """, (user["sub"],))
+
+        conn.commit()
 
     cur.close()
     conn.close()
