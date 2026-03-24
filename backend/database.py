@@ -31,10 +31,13 @@ def init_db():
             updated_at TIMESTAMP DEFAULT NOW()
         );
     """)
-    # Add status column if missing (existing installations)
+    # Add columns if missing (existing installations)
     cur.execute("""
         DO $$ BEGIN
             ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS force_password_reset BOOLEAN DEFAULT false;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token VARCHAR(255);
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMP;
         EXCEPTION WHEN others THEN NULL;
         END $$;
     """)

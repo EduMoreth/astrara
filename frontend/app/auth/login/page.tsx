@@ -21,6 +21,11 @@ export default function LoginPage() {
 
     try {
       const res = await apiLogin(email, password)
+      if (res.force_password_reset) {
+        toast.error(res.message || 'Voce precisa redefinir sua senha.')
+        router.push('/auth/reset-password?forced=true&email=' + encodeURIComponent(email))
+        return
+      }
       setToken(res.access_token)
       toast.success('Bem-vindo de volta!')
       router.push('/dashboard')
@@ -77,9 +82,9 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-              <a href="#" className="text-gold/60 hover:text-gold text-xs mt-2 inline-block transition-colors">
+              <Link href="/auth/forgot-password" className="text-gold/60 hover:text-gold text-xs mt-2 inline-block transition-colors">
                 Esqueci minha senha
-              </a>
+              </Link>
             </div>
 
             <button

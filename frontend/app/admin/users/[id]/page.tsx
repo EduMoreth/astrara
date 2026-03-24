@@ -92,8 +92,17 @@ export default function AdminUserDetail() {
               <option value="superadmin">Super Admin</option>
             </select>
           </div>
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-wrap gap-3 pt-2">
             <button onClick={handleSave} className="btn-primary text-sm">Salvar</button>
+            <button onClick={async () => {
+              const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.up.railway.app'
+              const token = localStorage.getItem('admin_token')
+              const res = await fetch(`${API_URL}/admin/api/users/${userId}/force-reset-password`, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}` },
+              })
+              if (res.ok) toast.success('Usuario devera redefinir a senha no proximo login')
+              else toast.error('Erro ao forcar reset')
+            }} className="px-4 py-2 text-sm rounded-full border border-[#F39C12]/30 text-[#F39C12] hover:bg-[#F39C12]/10">Resetar senha</button>
             <button onClick={() => { banUser(userId, 'Admin action'); toast.success('Banido') }} className="px-4 py-2 text-sm rounded-full border border-[#E74C3C]/30 text-[#E74C3C] hover:bg-[#E74C3C]/10">Banir</button>
             <button onClick={async () => { await deleteUser(userId); toast.success('Excluido'); router.push('/admin/users') }} className="px-4 py-2 text-sm rounded-full border border-[#E74C3C]/30 text-[#E74C3C] hover:bg-[#E74C3C]/10">Excluir</button>
           </div>

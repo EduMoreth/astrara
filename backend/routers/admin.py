@@ -391,6 +391,20 @@ async def manage_credits(user_id: str, data: CreditRequest, request: Request,
     return {"success": True}
 
 
+@router.post("/users/{user_id}/force-reset-password")
+async def force_reset_password(user_id: str, request: Request,
+                               admin: str = Depends(verify_admin_token)):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET force_password_reset = true, updated_at = NOW() WHERE id = %s", (user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    log_action(admin, "force_password_reset", "user", user_id,
+               ip=request.client.host if request.client else None)
+    return {"success": True}
+
+
 # ── Products ─────────────────────────────────────────────────
 
 @router.get("/products")
