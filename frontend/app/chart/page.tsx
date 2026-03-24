@@ -75,44 +75,79 @@ export default function ChartPage() {
     }
   }
 
-  function handleInterpretationClick() {
+  async function handleInterpretationClick() {
     // STEP 1: Must be logged in
     if (!isLoggedIn) {
-      // Save intent so after login we come back
       sessionStorage.setItem('astrara_intent', 'buy_interpretation')
-      toast.error('Voce precisa criar uma conta antes de comprar a interpretacao.')
+      toast.error('Voce precisa criar uma conta antes de desbloquear a interpretacao.')
       router.push('/auth/register')
       return
     }
 
-    // STEP 2: Must have a product configured
+    const token = localStorage.getItem('astrara_token')
+
+    // STEP 2: Check if user already has credits
+    try {
+      const creditsRes = await fetch(`${API_URL}/user/credits`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (creditsRes.ok) {
+        const creditsData = await creditsRes.json()
+        if (creditsData.credits_balance > 0) {
+          // User has credits — go straight to PDF download!
+          toast.success('Voce tem creditos! Gerando sua interpretacao...')
+          setPaidRecently(true)
+          return
+        }
+      }
+    } catch {
+      // If credits check fails, proceed to checkout
+    }
+
+    // STEP 3: No credits — check if user has a completed purchase
+    try {
+      const purchaseRes = await fetch(`${API_URL}/user/has-purchase`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (purchaseRes.ok) {
+        const purchaseData = await purchaseRes.json()
+        if (purchaseData.has_purchase) {
+          toast.success('Voce ja comprou! Gerando sua interpretacao...')
+          setPaidRecently(true)
+          return
+        }
+      }
+    } catch {
+      // Continue to checkout
+    }
+
+    // STEP 4: Must have a product configured
     if (!interpProduct?.id) {
       toast.error('Produto de interpretacao nao configurado. Contate o suporte.')
       return
     }
 
-    // STEP 3: Redirect to Stripe checkout
-    const token = localStorage.getItem('astrara_token')
-    fetch(`${API_URL}/checkout/create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ product_id: interpProduct.id }),
-    })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.detail || 'Erro') })
-        return r.json()
+    // STEP 5: No credits, no purchase — redirect to Stripe checkout
+    try {
+      const res = await fetch(`${API_URL}/checkout/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ product_id: interpProduct.id }),
       })
-      .then(data => {
-        if (data.checkout_url) {
-          window.location.href = data.checkout_url
-        }
-      })
-      .catch((err: Error) => {
-        toast.error(err.message || 'Erro ao iniciar pagamento')
-      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Erro')
+      }
+      const data = await res.json()
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao iniciar pagamento')
+    }
   }
 
   async function handleDownloadPdf() {

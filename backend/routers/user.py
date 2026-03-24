@@ -100,3 +100,39 @@ async def save_chart(
     conn.close()
 
     return {"id": str(row["id"]), "message": "Mapa salvo com sucesso"}
+
+
+@router.get("/credits")
+async def get_user_credits(user: dict = Depends(get_current_user)):
+    """Get current user's credit balance."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM user_credits WHERE user_id = %s", (user["sub"],))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        return {"credits_balance": 0, "total_purchased": 0, "total_used": 0}
+
+    return {
+        "credits_balance": row["credits_balance"],
+        "total_purchased": row["total_purchased"],
+        "total_used": row["total_used"],
+    }
+
+
+@router.get("/has-purchase")
+async def check_has_purchase(user: dict = Depends(get_current_user)):
+    """Check if user has any completed purchase."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id FROM purchases WHERE user_id = %s AND status = 'completed' LIMIT 1",
+        (user["sub"],),
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    return {"has_purchase": row is not None}
