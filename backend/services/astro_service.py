@@ -1,5 +1,73 @@
 from kerykeion import AstrologicalSubject
-import json
+
+
+# Sign order for absolute degree calculation
+SIGN_ORDER = [
+    "Ari", "Tau", "Gem", "Can", "Leo", "Vir",
+    "Lib", "Sco", "Sag", "Cap", "Aqu", "Pis",
+]
+
+SIGN_OFFSETS = {s: i * 30 for i, s in enumerate(SIGN_ORDER)}
+
+# Aspect definitions: name, exact_angle, orb_tolerance
+ASPECT_DEFS = [
+    ("conjunction", 0, 8),
+    ("opposition", 180, 8),
+    ("trine", 120, 7),
+    ("square", 90, 7),
+    ("sextile", 60, 5),
+    ("quincunx", 150, 3),
+    ("semisextile", 30, 2),
+]
+
+# Planets that participate in aspects
+ASPECT_PLANETS = ["sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto"]
+
+
+def _absolute_degree(sign: str, deg: float) -> float:
+    """Convert sign + degree to absolute ecliptic degree (0-360)."""
+    offset = SIGN_OFFSETS.get(sign, 0)
+    return offset + deg
+
+
+def _calculate_aspects(positions: dict) -> list:
+    """Calculate aspects between planets based on angular distances."""
+    aspects = []
+
+    # Get absolute degrees for each planet
+    planet_degrees = {}
+    for key in ASPECT_PLANETS:
+        pos = positions.get(key)
+        if pos:
+            planet_degrees[key] = _absolute_degree(pos["sign"], pos["deg"])
+
+    # Check every pair of planets
+    planet_keys = list(planet_degrees.keys())
+    for i in range(len(planet_keys)):
+        for j in range(i + 1, len(planet_keys)):
+            p1 = planet_keys[i]
+            p2 = planet_keys[j]
+            deg1 = planet_degrees[p1]
+            deg2 = planet_degrees[p2]
+
+            # Angular distance (shortest arc)
+            diff = abs(deg1 - deg2)
+            if diff > 180:
+                diff = 360 - diff
+
+            # Check against each aspect definition
+            for aspect_name, exact_angle, orb in ASPECT_DEFS:
+                deviation = abs(diff - exact_angle)
+                if deviation <= orb:
+                    aspects.append({
+                        "p1": p1.capitalize(),
+                        "p2": p2.capitalize(),
+                        "aspect": aspect_name,
+                        "orbit": round(deviation, 2),
+                    })
+                    break  # Only one aspect per pair
+
+    return aspects
 
 
 def generate_chart(
@@ -56,16 +124,8 @@ def generate_chart(
             "deg": round(house.position, 2),
         })
 
-    # Aspects
-    aspects = []
-    if hasattr(subject, "aspects_list"):
-        for aspect in subject.aspects_list:
-            aspects.append({
-                "p1": aspect.get("p1_name", ""),
-                "p2": aspect.get("p2_name", ""),
-                "aspect": aspect.get("aspect", ""),
-                "orbit": aspect.get("orbit", 0),
-            })
+    # Calculate aspects manually from planet positions
+    aspects = _calculate_aspects(positions)
 
     return {
         "positions": positions,
