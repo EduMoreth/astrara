@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -13,6 +13,12 @@ import { generateChart, ChartResponse } from '@/lib/api'
 export default function ChartPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ChartResponse | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  useEffect(() => {
+    const token = localStorage.getItem('astrara_token')
+    setIsLoggedIn(!!token)
+  }, [])
 
   async function handleSubmit(data: {
     name: string
@@ -186,12 +192,23 @@ export default function ChartPage() {
                       Quer entender o que esse mapa significa para voce?
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                      <Link href="/auth/register" className="btn-secondary text-sm">
-                        Criar conta gratis
-                      </Link>
-                      <Link href="/auth/register" className="btn-primary text-sm">
-                        Ver interpretacao completa &rarr;
-                      </Link>
+                      {isLoggedIn ? (
+                        <button
+                          onClick={() => toast.info('Interpretacao com IA em breve! Estamos finalizando.')}
+                          className="btn-primary text-sm"
+                        >
+                          Ver interpretacao completa &rarr;
+                        </button>
+                      ) : (
+                        <>
+                          <Link href="/auth/login" className="btn-secondary text-sm">
+                            Ja tenho conta
+                          </Link>
+                          <Link href="/auth/register" className="btn-primary text-sm">
+                            Criar conta gratis &rarr;
+                          </Link>
+                        </>
+                      )}
                     </div>
                   </motion.div>
                 </div>
