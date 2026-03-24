@@ -95,6 +95,13 @@ def generate_chart(
         online=False,
     )
 
+    # Debug: log raw Kerykeion data
+    print(f"[ASTRO DEBUG] Name={name}, Date={year}-{month}-{day} {hour}:{minute}")
+    print(f"[ASTRO DEBUG] Lat={lat}, Lng={lng}, TZ={tz_str}")
+    print(f"[ASTRO DEBUG] Sun: sign={subject.sun.sign}, pos={subject.sun.position}, abs={getattr(subject.sun, 'abs_pos', 'N/A')}")
+    print(f"[ASTRO DEBUG] Moon: sign={subject.moon.sign}, pos={subject.moon.position}, abs={getattr(subject.moon, 'abs_pos', 'N/A')}")
+    print(f"[ASTRO DEBUG] UTC offset from Kerykeion: {getattr(subject, 'utc_time', 'N/A')}, local={getattr(subject, 'local_time', 'N/A')}")
+
     positions = {
         "sun": {"sign": subject.sun.sign, "deg": round(subject.sun.position, 2)},
         "moon": {"sign": subject.moon.sign, "deg": round(subject.moon.position, 2)},
