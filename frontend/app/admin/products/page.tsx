@@ -33,7 +33,7 @@ export default function AdminProductsPage() {
       await createProduct({ ...form, price_cents, price_reais: undefined })
       toast.success('Produto criado')
       setShowCreate(false)
-      setForm({ name: '', description: '', type: 'credits', price_reais: '29.90', credits: 1, create_in_stripe: true })
+      setForm({ name: '', description: '', type: 'credits', price_reais: '29.90', credits: 1, max_saved_charts: 0, recurrence: 'none', create_in_stripe: true })
       load()
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Erro') }
   }
