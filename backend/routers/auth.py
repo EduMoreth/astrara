@@ -2,16 +2,27 @@ import os
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from jose import jwt
-from passlib.context import CryptContext
+import bcrypt
 from models.user import UserRegister, UserLogin
 from database import get_connection
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 72
+
+
+def hash_password(password: str) -> str:
+    pwd_bytes = password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    pwd_bytes = password.encode("utf-8")[:72]
+    hashed_bytes = hashed.encode("utf-8")
+    return bcrypt.checkpw(pwd_bytes, hashed_bytes)
 
 
 def create_token(user_id: str, name: str, email: str) -> str:
@@ -28,7 +39,7 @@ def verify_token(token: str) -> dict:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except Exception:
-        raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+        raise HTTPException(status_code=401, detail="Token invalido ou expirado")
 
 
 @router.post("/register")
@@ -41,9 +52,9 @@ async def register(data: UserRegister):
     if cur.fetchone():
         cur.close()
         conn.close()
-        raise HTTPException(status_code=400, detail="Email já cadastrado")
+        raise HTTPException(status_code=400, detail="Email ja cadastrado")
 
-    hashed = pwd_context.hash(data.password)
+    hashed = hash_password(data.password)
     cur.execute(
         "INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s) RETURNING id, name, email",
         (data.name, data.email, hashed),
@@ -70,7 +81,7 @@ async def login(data: UserLogin):
     cur.close()
     conn.close()
 
-    if not user or not pwd_context.verify(data.password, user["password_hash"]):
+    if not user or not verify_password(data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
 
     token = create_token(str(user["id"]), user["name"], user["email"])

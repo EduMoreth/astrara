@@ -34,9 +34,7 @@ def create_admin_if_needed():
     if not admin_email or not admin_password:
         return
 
-    from passlib.context import CryptContext
-
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    from routers.auth import hash_password
 
     try:
         conn = get_connection()
@@ -48,7 +46,7 @@ def create_admin_if_needed():
             conn.close()
             return
 
-        hashed = pwd_context.hash(admin_password)
+        hashed = hash_password(admin_password)
         cur.execute(
             "INSERT INTO users (name, email, password_hash, plan) VALUES (%s, %s, %s, %s)",
             ("Super Admin", admin_email, hashed, "superadmin"),
