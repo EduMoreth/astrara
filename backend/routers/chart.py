@@ -2,6 +2,7 @@ import json
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import Response
+from pydantic import BaseModel
 from models.chart import ChartRequest
 from services.astro_service import generate_chart
 from services.geocoding_service import geocode
@@ -152,5 +153,62 @@ async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = H
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'attachment; filename="astrara-mapa-{name.lower().replace(" ", "-")}.pdf"'
+        },
+    )
+
+
+class PdfRequest(BaseModel):
+    positions: dict
+    name: str = "Meu Mapa Astral"
+
+
+@router.post("/interpretation/generate-pdf")
+async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Optional[str] = Header(None)):
+    """Generate PDF directly from positions sent by frontend. Requires auth + credits/purchase."""
+    user = get_optional_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login necessario para baixar o PDF")
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Check if user has credits or has completed a purchase
+    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user["sub"],))
+    credits_row = cur.fetchone()
+    has_credits = credits_row and credits_row["credits_balance"] > 0
+
+    cur.execute("""
+        SELECT id FROM purchases
+        WHERE user_id = %s AND status = 'completed'
+        ORDER BY created_at DESC LIMIT 1
+    """, (user["sub"],))
+    has_purchase = cur.fetchone() is not None
+
+    if not has_credits and not has_purchase:
+        cur.close()
+        conn.close()
+        raise HTTPException(
+            status_code=402,
+            detail="Voce precisa comprar a interpretacao antes de baixar o PDF."
+        )
+
+    # DON'T deduct credit here — credit was already added via checkout/verify
+    # Only deduct if we want to allow re-downloads consuming credits
+
+    cur.close()
+    conn.close()
+
+    # Generate interpretation with AI
+    interpretation_text = generate_interpretation(data.positions, data.name)
+
+    # Generate beautiful PDF
+    pdf_bytes = generate_pdf(data.name, data.positions, interpretation_text)
+
+    safe_name = data.name.lower().replace(" ", "-")[:30]
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="astrara-interpretacao-{safe_name}.pdf"'
         },
     )
