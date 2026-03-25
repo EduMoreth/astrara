@@ -147,6 +147,51 @@ async def startup():
     except Exception as e:
         print(f"Warning: Could not start scheduler: {e}")
 
+    # Check if today's post was missed (container restart recovery)
+    try:
+        from datetime import datetime, date
+        import pytz
+        brt = pytz.timezone("America/Sao_Paulo")
+        now_brt = datetime.now(brt)
+        if now_brt.hour >= 7:  # Only after 7am
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT status FROM instagram_posts WHERE post_date = %s",
+                (date.today(),)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            if not row or row["status"] == "failed":
+                print(f"Missed post detected for {date.today()}, triggering now...")
+                from services.daily_post_orchestrator import run_daily_instagram_post
+                run_daily_instagram_post(date.today())
+                print(f"Recovery post for {date.today()} completed!")
+    except Exception as e:
+        print(f"Warning: Could not check/recover missed post: {e}")
+
+
+@app.get("/cron/instagram-daily")
+async def cron_instagram_daily(secret: str = ""):
+    """
+    External cron endpoint to trigger daily Instagram post.
+    Protected by ADMIN_JWT_SECRET as query param.
+    Call: GET /cron/instagram-daily?secret=YOUR_ADMIN_JWT_SECRET
+    """
+    expected = os.getenv("ADMIN_JWT_SECRET", "")
+    if not expected or secret != expected:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    from datetime import date
+    from services.daily_post_orchestrator import run_daily_instagram_post
+    try:
+        run_daily_instagram_post(date.today())
+        return {"success": True, "date": str(date.today())}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 
 @app.get("/")
 async def root():
