@@ -43,8 +43,8 @@ export default function AdminTransactionsPage() {
         </div>
       )}
 
-      <div className="glass-card overflow-hidden">
-        <table className="w-full">
+      <div className="glass-card overflow-x-auto">
+        <table className="w-full min-w-[700px]">
           <thead>
             <tr className="border-b border-gold/10">
               {['Data', 'Usuario', 'Tipo', 'Valor', 'Status', 'Stripe ID', 'Acoes'].map(h => (

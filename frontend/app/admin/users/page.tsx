@@ -53,20 +53,50 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="font-display text-2xl text-stardust">Usuarios ({total})</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h2 className="font-display text-xl sm:text-2xl text-stardust">Usuarios ({total})</h2>
         <input
           type="text"
           placeholder="Buscar por nome ou email..."
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1) }}
-          className="input-field w-72 text-sm"
+          className="input-field w-full sm:w-72 text-sm"
         />
       </div>
 
-      <div className="glass-card overflow-hidden">
-        <table className="w-full">
+      {/* Mobile: card view */}
+      <div className="sm:hidden space-y-3">
+        {users.map(u => (
+          <div key={u.id} className="glass-card p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-stardust text-sm font-medium">{u.name}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[u.status] || 'bg-muted/20 text-muted'}`}>{u.status}</span>
+            </div>
+            <div className="text-muted text-xs truncate">{u.email}</div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="bg-gold/10 text-gold px-2 py-0.5 rounded-full">{u.plan}</span>
+              <span className="text-muted">{u.credits} cred.</span>
+              <span className="text-muted">{u.chart_count} mapas</span>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <Link href={`/admin/users/${u.id}`} className="text-gold text-xs">Ver detalhes</Link>
+              {u.status !== 'banned' && (
+                <button onClick={() => handleBan(u.id)} className="text-[#F39C12] text-xs">Banir</button>
+              )}
+              {confirmDelete === u.id ? (
+                <button onClick={() => handleDelete(u.id)} className="text-[#E74C3C] text-xs font-bold">Confirmar?</button>
+              ) : (
+                <button onClick={() => setConfirmDelete(u.id)} className="text-[#E74C3C] text-xs">Excluir</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: table view */}
+      <div className="hidden sm:block glass-card overflow-x-auto">
+        <table className="w-full min-w-[700px]">
           <thead>
             <tr className="border-b border-gold/10">
               {['Nome', 'Email', 'Plano', 'Creditos', 'Mapas', 'Status', 'Acoes'].map(h => (
@@ -83,9 +113,7 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3 text-stardust text-sm">{u.credits}</td>
                 <td className="px-4 py-3 text-stardust text-sm">{u.chart_count}</td>
                 <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[u.status] || 'bg-muted/20 text-muted'}`}>
-                    {u.status}
-                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[u.status] || 'bg-muted/20 text-muted'}`}>{u.status}</span>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
@@ -108,7 +136,7 @@ export default function AdminUsersPage() {
 
       {/* Pagination */}
       {pages > 1 && (
-        <div className="flex justify-center gap-2">
+        <div className="flex justify-center gap-2 flex-wrap">
           {Array.from({ length: pages }, (_, i) => (
             <button
               key={i}

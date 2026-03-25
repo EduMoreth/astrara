@@ -22,6 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const router = useRouter()
   const [ready, setReady] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const isLoginPage = pathname === '/admin/login'
 
@@ -33,19 +34,44 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [isLoginPage, router])
 
+  // Close mobile menu on navigation
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [pathname])
+
   if (isLoginPage) return <>{children}</>
   if (!ready) return null
 
   return (
     <div className="flex h-screen bg-cosmos">
-      {/* Sidebar */}
-      <aside className="w-60 bg-[#0D0D14] border-r border-gold/10 flex flex-col">
-        <div className="px-5 py-5 border-b border-gold/10">
-          <Link href="/admin/dashboard" className="font-display text-xl text-gradient-gold font-semibold">
+      {/* Mobile overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar - hidden on mobile, shown on lg+ */}
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-60 bg-[#0D0D14] border-r border-gold/10 flex flex-col
+        transform transition-transform duration-200 ease-in-out
+        lg:relative lg:translate-x-0
+        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="px-5 py-5 border-b border-gold/10 flex items-center justify-between">
+          <Link href="/admin/dashboard" className="font-display text-lg sm:text-xl text-gradient-gold font-semibold">
             ✦ Astrara Admin
           </Link>
+          {/* Close button on mobile */}
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="lg:hidden text-muted hover:text-stardust text-xl"
+          >
+            ✕
+          </button>
         </div>
-        <nav className="flex-1 py-4">
+        <nav className="flex-1 py-4 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
             const active = pathname.startsWith(item.href)
             return (
@@ -75,14 +101,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-auto">
-        <header className="h-16 border-b border-gold/10 flex items-center justify-between px-8 bg-[#0D0D14]/80 backdrop-blur-sm sticky top-0 z-10">
-          <h1 className="text-stardust text-sm font-medium">
-            {NAV_ITEMS.find(i => pathname.startsWith(i.href))?.label || 'Admin'}
-          </h1>
-          <span className="text-muted text-xs">Admin</span>
+      <main className="flex-1 overflow-auto w-full">
+        <header className="h-14 sm:h-16 border-b border-gold/10 flex items-center justify-between px-4 sm:px-8 bg-[#0D0D14]/80 backdrop-blur-sm sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            {/* Hamburger menu - mobile only */}
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="lg:hidden text-stardust text-xl p-1"
+            >
+              ☰
+            </button>
+            <h1 className="text-stardust text-sm font-medium">
+              {NAV_ITEMS.find(i => pathname.startsWith(i.href))?.label || 'Admin'}
+            </h1>
+          </div>
+          <span className="text-muted text-xs hidden sm:inline">Admin</span>
         </header>
-        <div className="p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
           {children}
         </div>
       </main>

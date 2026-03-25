@@ -35,7 +35,7 @@ export default function AdminDashboard() {
       <h2 className="font-display text-2xl text-stardust">Dashboard</h2>
 
       {/* Row 1: Main KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           icon="👥"
           label="Usuarios"
@@ -63,7 +63,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Row 2: Secondary KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <StatCard
           icon="💾"
           label="Mapas salvos"
@@ -107,7 +107,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Recent users */}
-      <div className="glass-card p-6">
+      <div className="glass-card p-4 sm:p-6 overflow-x-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-stardust text-sm font-medium">Ultimos usuarios</h3>
           <Link href="/admin/users" className="text-gold text-xs hover:underline">Ver todos →</Link>
