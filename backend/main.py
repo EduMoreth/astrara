@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from database import init_db, get_connection
-from routers import auth, chart, user, admin, checkout, support
+from routers import auth, chart, user, admin, checkout, support, blog
 
 load_dotenv()
 
@@ -36,6 +36,7 @@ app.include_router(user.router)
 app.include_router(admin.router)
 app.include_router(checkout.router)
 app.include_router(support.router)
+app.include_router(blog.router)
 
 
 def create_admin_if_needed():
@@ -191,6 +192,61 @@ async def cron_instagram_daily(secret: str = ""):
         return {"success": True, "date": str(date.today())}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.get("/cron/twitter-daily")
+async def cron_twitter_daily(secret: str = ""):
+    """External cron to trigger daily tweet."""
+    expected = os.getenv("ADMIN_JWT_SECRET", "")
+    if not expected or secret != expected:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from datetime import date
+    from services.twitter_service import run_daily_tweet
+    try:
+        run_daily_tweet(date.today())
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/cron/newsletter-weekly")
+async def cron_newsletter_weekly(secret: str = ""):
+    """External cron to trigger weekly newsletter (Mondays)."""
+    expected = os.getenv("ADMIN_JWT_SECRET", "")
+    if not expected or secret != expected:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from services.newsletter_service import send_weekly_newsletter
+    try:
+        result = send_weekly_newsletter()
+        return {"success": True, **result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/cron/blog-weekly")
+async def cron_blog_weekly(secret: str = ""):
+    """External cron to generate and publish a blog post."""
+    expected = os.getenv("ADMIN_JWT_SECRET", "")
+    if not expected or secret != expected:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from services.blog_service import generate_and_publish_blog_post
+    try:
+        result = generate_and_publish_blog_post()
+        return {"success": True, "title": result["title"], "slug": result["slug"]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/unsubscribe")
+async def unsubscribe(email: str = ""):
+    """Unsubscribe from newsletter."""
+    if email:
+        from services.newsletter_service import unsubscribe_user
+        unsubscribe_user(email)
+    return {"message": "Voce foi removido da newsletter com sucesso."}
 
 
 @app.get("/")

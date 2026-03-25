@@ -250,6 +250,87 @@ def init_db():
         );
     """)
 
+    # ── Blog Posts ─────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS blog_posts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            slug VARCHAR(255) UNIQUE NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            meta_description VARCHAR(320),
+            content TEXT NOT NULL,
+            category VARCHAR(100),
+            tags TEXT,
+            featured_image_url VARCHAR(500),
+            status VARCHAR(20) DEFAULT 'draft',
+            views INTEGER DEFAULT 0,
+            published_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
+    # ── Twitter Posts ──────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS twitter_posts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            post_date DATE NOT NULL UNIQUE,
+            tweet_text TEXT,
+            twitter_post_id VARCHAR(255),
+            status VARCHAR(30) DEFAULT 'pending',
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            published_at TIMESTAMP
+        );
+    """)
+
+    # ── Newsletter ────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            email VARCHAR(255) UNIQUE NOT NULL,
+            user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            status VARCHAR(20) DEFAULT 'active',
+            subscribed_at TIMESTAMP DEFAULT NOW(),
+            unsubscribed_at TIMESTAMP
+        );
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS newsletter_editions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            subject VARCHAR(255) NOT NULL,
+            content_html TEXT,
+            week_start DATE,
+            week_end DATE,
+            sent_count INTEGER DEFAULT 0,
+            status VARCHAR(30) DEFAULT 'draft',
+            sent_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
+    # ── Referral Program ──────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS referrals (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            referrer_id UUID REFERENCES users(id) ON DELETE CASCADE,
+            referred_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            referral_code VARCHAR(50) NOT NULL,
+            credits_awarded INTEGER DEFAULT 0,
+            status VARCHAR(20) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
+    # Add referral_code to users
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(50);
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by UUID;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
+    """)
+
     cur.execute("""
         INSERT INTO system_config (key, value, description) VALUES
         ('ai_model', 'claude-sonnet-4-6', 'Modelo Anthropic utilizado nas interpretacoes'),
@@ -257,7 +338,9 @@ def init_db():
         ('credits_per_synastry', '2', 'Creditos consumidos por sinastria'),
         ('free_credits_on_register', '0', 'Creditos gratis ao criar conta'),
         ('maintenance_mode', 'false', 'Modo manutencao do sistema'),
-        ('support_email', 'suporte@astrara.online', 'Email de suporte exibido para usuarios')
+        ('support_email', 'suporte@astrara.online', 'Email de suporte exibido para usuarios'),
+        ('referral_credits', '1', 'Creditos concedidos por indicacao'),
+        ('newsletter_auto_subscribe', 'true', 'Inscrever novos usuarios na newsletter automaticamente')
         ON CONFLICT (key) DO NOTHING;
     """)
 
