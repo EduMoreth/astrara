@@ -44,22 +44,22 @@ export default function LandingPage() {
       <StarBackground />
 
       {/* ─── Nav ──────────────────────────────────── */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
-        <Link href="/" className="font-display text-2xl font-semibold text-gradient-gold">
+      <nav className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5 max-w-7xl mx-auto">
+        <Link href="/" className="font-display text-xl sm:text-2xl font-semibold text-gradient-gold">
           Astrara
         </Link>
-        <div className="flex items-center gap-4">
-          <Link href="/auth/login" className="text-muted hover:text-stardust transition-colors text-sm">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <Link href="/auth/login" className="text-muted hover:text-stardust transition-colors text-xs sm:text-sm">
             Entrar
           </Link>
-          <Link href="/chart" className="btn-primary text-sm !py-2.5 !px-5">
+          <Link href="/chart" className="btn-primary !text-xs sm:!text-sm !py-2 sm:!py-2.5 !px-4 sm:!px-5 !w-auto">
             Criar meu mapa
           </Link>
         </div>
       </nav>
 
       {/* ─── Hero ─────────────────────────────────── */}
-      <section className="relative z-10 flex flex-col items-center text-center px-6 pt-20 pb-32 max-w-4xl mx-auto">
+      <section className="relative z-10 flex flex-col items-center text-center px-4 sm:px-6 pt-12 sm:pt-20 pb-16 sm:pb-32 max-w-4xl mx-auto">
         <motion.h1
           className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-light leading-[1.1] text-stardust"
           initial={{ opacity: 0, y: 40 }}
@@ -72,7 +72,7 @@ export default function LandingPage() {
         </motion.h1>
 
         <motion.p
-          className="mt-6 text-lg text-muted max-w-xl"
+          className="mt-4 sm:mt-6 text-base sm:text-lg text-muted max-w-xl px-2"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.7 }}

@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   title: 'Astrara — O cosmos, decifrado.',
   description: 'Calcule seu mapa astral gratuitamente com precisao profissional. Interpretacoes profundas com inteligencia artificial.',
   keywords: 'mapa astral, astrologia, mapa natal, horoscopo, signos, mapa astrologico',
+  viewport: 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1',
   openGraph: {
     title: 'Astrara — O cosmos, decifrado.',
     description: 'Calcule seu mapa astral gratuitamente. Interpretacoes com IA.',
@@ -42,7 +43,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR" className={`${inter.variable} ${cormorant.variable}`}>
-      <body className="font-sans">
+      <body className="font-sans overflow-x-hidden">
         {children}
         <CookieConsent />
         <Toaster

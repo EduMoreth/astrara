@@ -184,7 +184,7 @@ export default function BirthForm({ onSubmit, loading }: Props) {
         {/* Birth date - dd/mm/yyyy */}
         <div>
           <label className="block text-sm text-muted mb-2">Data de nascimento</label>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <input
               type="number"
               className="input-field text-center"

@@ -56,21 +56,21 @@ export default function PlanetTable({ positions }: Props) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.3, duration: 0.6 }}
     >
-      <h2 className="font-display text-2xl font-light text-stardust mb-6">
+      <h2 className="font-display text-xl sm:text-2xl font-light text-stardust mb-4 sm:mb-6">
         Suas posicoes astrologicas
       </h2>
 
-      <div className="glass-card overflow-hidden">
-        <table className="w-full">
+      <div className="glass-card overflow-x-auto">
+        <table className="w-full min-w-[300px]">
           <thead>
             <tr className="border-b border-gold/10">
-              <th className="text-left text-xs text-muted font-normal px-5 py-3 uppercase tracking-wider">
+              <th className="text-left text-xs text-muted font-normal px-3 sm:px-5 py-3 uppercase tracking-wider">
                 Planeta
               </th>
-              <th className="text-left text-xs text-muted font-normal px-5 py-3 uppercase tracking-wider">
+              <th className="text-left text-xs text-muted font-normal px-3 sm:px-5 py-3 uppercase tracking-wider">
                 Signo
               </th>
-              <th className="text-right text-xs text-muted font-normal px-5 py-3 uppercase tracking-wider">
+              <th className="text-right text-xs text-muted font-normal px-3 sm:px-5 py-3 uppercase tracking-wider">
                 Grau
               </th>
             </tr>
@@ -90,16 +90,16 @@ export default function PlanetTable({ positions }: Props) {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.4 + i * 0.05 }}
                 >
-                  <td className="px-5 py-3.5 flex items-center gap-3">
-                    <span className="text-gold text-lg w-6 text-center font-mono">
+                  <td className="px-3 sm:px-5 py-3 flex items-center gap-2 sm:gap-3">
+                    <span className="text-gold text-base sm:text-lg w-5 sm:w-6 text-center font-mono">
                       {planet.icon}
                     </span>
-                    <span className="text-stardust text-sm">{planet.label}</span>
+                    <span className="text-stardust text-xs sm:text-sm">{planet.label}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-stardust/80 text-sm">
+                  <td className="px-3 sm:px-5 py-3 text-stardust/80 text-xs sm:text-sm">
                     {signPt}
                   </td>
-                  <td className="px-5 py-3.5 text-right text-muted text-sm font-mono">
+                  <td className="px-3 sm:px-5 py-3 text-right text-muted text-xs sm:text-sm font-mono">
                     {formatDegree(pos.deg)}
                   </td>
                 </motion.tr>

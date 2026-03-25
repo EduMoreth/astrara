@@ -150,3 +150,45 @@ body {
     background-clip: text;
   }
 }
+
+/* ── Mobile Responsiveness ───────────────────────── */
+@media (max-width: 640px) {
+  .btn-primary,
+  .btn-secondary {
+    padding: 12px 24px;
+    font-size: 14px;
+    width: 100%;
+  }
+
+  .glass-card {
+    border-radius: 16px;
+  }
+
+  .input-field {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+    padding: 14px 12px;
+  }
+
+  /* Ensure touch targets are at least 44px */
+  button, a, input, select, textarea {
+    min-height: 44px;
+  }
+}
+
+/* Reduce animations for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Safe area for notched phones */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}

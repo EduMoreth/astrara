@@ -237,7 +237,7 @@ export default function ChartPage() {
       <StarBackground />
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
+      <nav className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5 max-w-7xl mx-auto">
         <Link href="/" className="font-display text-2xl font-semibold text-gradient-gold">
           Astrara
         </Link>
@@ -254,7 +254,7 @@ export default function ChartPage() {
         </div>
       </nav>
 
-      <div className="relative z-10 px-6 py-12 max-w-6xl mx-auto">
+      <div className="relative z-10 px-4 sm:px-6 py-6 sm:py-12 max-w-6xl mx-auto">
         <AnimatePresence mode="wait">
           {/* ─── Loading overlay ───────────────── */}
           {loading && (
@@ -299,7 +299,7 @@ export default function ChartPage() {
                 &larr; Calcular novo mapa
               </button>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-12 items-start">
                 {/* Chart wheel */}
                 <div>
                   <ChartWheel
@@ -313,7 +313,7 @@ export default function ChartPage() {
                   />
                   {/* Save to account + Download */}
                   <div className="space-y-3 mt-6">
-                    <div className="flex justify-center gap-3">
+                    <div className="flex flex-col sm:flex-row justify-center gap-3">
                       {/* Save to DB */}
                       {isLoggedIn ? (
                         <button

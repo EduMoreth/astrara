@@ -96,17 +96,17 @@ export default function DashboardPage() {
     <main className="relative min-h-screen">
       <StarBackground />
 
-      <header className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
-        <Link href="/" className="font-display text-2xl font-semibold text-gradient-gold">Astrara</Link>
-        <div className="flex items-center gap-5">
-          <Link href="/conta" className="text-muted hover:text-stardust text-sm">Minha conta</Link>
-          <Link href="/support" className="text-muted hover:text-stardust text-sm">Suporte</Link>
-          <span className="text-stardust text-sm">{user.name}</span>
-          <button onClick={() => { removeToken(); router.push('/') }} className="text-muted hover:text-stardust text-sm">Sair</button>
+      <header className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5 max-w-7xl mx-auto">
+        <Link href="/" className="font-display text-xl sm:text-2xl font-semibold text-gradient-gold">Astrara</Link>
+        <div className="flex items-center gap-2 sm:gap-5">
+          <Link href="/conta" className="text-muted hover:text-stardust text-xs sm:text-sm hidden sm:inline">Minha conta</Link>
+          <Link href="/support" className="text-muted hover:text-stardust text-xs sm:text-sm hidden sm:inline">Suporte</Link>
+          <span className="text-stardust text-xs sm:text-sm truncate max-w-[100px] sm:max-w-none">{user.name}</span>
+          <button onClick={() => { removeToken(); router.push('/') }} className="text-muted hover:text-stardust text-xs sm:text-sm">Sair</button>
         </div>
       </header>
 
-      <div className="relative z-10 px-6 py-8 max-w-7xl mx-auto">
+      <div className="relative z-10 px-4 sm:px-6 py-6 sm:py-8 max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="font-display text-3xl font-light text-stardust">Meus mapas</h1>
