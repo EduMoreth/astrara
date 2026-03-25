@@ -1,12 +1,6 @@
 import os
-import json
-import hmac
-import hashlib
-import base64
-import time
-import urllib.parse
-import httpx
 import anthropic
+import tweepy
 from datetime import date
 from database import get_connection
 
@@ -18,52 +12,17 @@ TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET", "")
 anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
-def _oauth_signature(method: str, url: str, params: dict) -> str:
-    """Generate OAuth 1.0a signature."""
-    sorted_params = "&".join(f"{k}={urllib.parse.quote(str(v), safe='')}"
-                             for k, v in sorted(params.items()))
-    base_string = f"{method}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(sorted_params, safe='')}"
-    signing_key = f"{urllib.parse.quote(TWITTER_API_SECRET, safe='')}&{urllib.parse.quote(TWITTER_ACCESS_SECRET, safe='')}"
-    signature = base64.b64encode(
-        hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha256).digest()
-    ).decode()
-    return signature
-
-
 def post_tweet(text: str) -> dict:
-    """Post a tweet using Twitter API v2 with OAuth 1.0a."""
-    url = "https://api.twitter.com/2/tweets"
-
-    oauth_params = {
-        "oauth_consumer_key": TWITTER_API_KEY,
-        "oauth_nonce": base64.b64encode(os.urandom(32)).decode().replace("=", "").replace("+", "").replace("/", ""),
-        "oauth_signature_method": "HMAC-SHA256",
-        "oauth_timestamp": str(int(time.time())),
-        "oauth_token": TWITTER_ACCESS_TOKEN,
-        "oauth_version": "1.0",
-    }
-
-    signature = _oauth_signature("POST", url, oauth_params)
-    oauth_params["oauth_signature"] = signature
-
-    auth_header = "OAuth " + ", ".join(
-        f'{k}="{urllib.parse.quote(v, safe="")}"' for k, v in sorted(oauth_params.items())
+    """Post a tweet using tweepy (Twitter API v2 + OAuth 1.0a)."""
+    client = tweepy.Client(
+        consumer_key=TWITTER_API_KEY,
+        consumer_secret=TWITTER_API_SECRET,
+        access_token=TWITTER_ACCESS_TOKEN,
+        access_token_secret=TWITTER_ACCESS_SECRET,
     )
-
-    response = httpx.post(
-        url,
-        json={"text": text},
-        headers={
-            "Authorization": auth_header,
-            "Content-Type": "application/json",
-        },
-        timeout=30,
-    )
-
-    if response.status_code not in (200, 201):
-        raise Exception(f"Twitter API error: {response.status_code} {response.text}")
-
-    return response.json()
+    response = client.create_tweet(text=text)
+    tweet_id = response.data["id"]
+    return {"data": {"id": tweet_id}}
 
 
 def generate_daily_tweet(transits: dict = None) -> str:
@@ -82,12 +41,12 @@ TRANSITOS DE HOJE ({transits['date']}):
 - Venus: {transits['venus']['deg']} em {transits['venus']['sign']}
 
 REGRAS:
-- Maximo 280 caracteres
+- Maximo 270 caracteres (para seguranca)
 - Tom poetico e inspirador
-- Inclua 2-3 hashtags de astrologia
+- Inclua 2-3 hashtags de astrologia em portugues
 - Inclua o link astrara.online
-- Em portugues
-- Use emojis com moderacao (1-2)
+- Em portugues brasileiro
+- Use 1-2 emojis com moderacao
 
 Retorne APENAS o texto do tweet, nada mais."""
 
@@ -97,7 +56,7 @@ Retorne APENAS o texto do tweet, nada mais."""
         messages=[{"role": "user", "content": prompt}],
     )
 
-    return message.content[0].text.strip()
+    return message.content[0].text.strip().strip('"')
 
 
 def run_daily_tweet(target_date: date = None):
@@ -105,25 +64,29 @@ def run_daily_tweet(target_date: date = None):
     if not target_date:
         target_date = date.today()
 
-    if not TWITTER_API_KEY:
+    if not TWITTER_API_KEY or not TWITTER_ACCESS_TOKEN:
         print("Twitter API keys not configured. Skipping.")
         return
 
     conn = get_connection()
     cur = conn.cursor()
 
-    # Check if already posted
+    # Check if already posted today
     cur.execute("SELECT status FROM twitter_posts WHERE post_date = %s", (target_date,))
     existing = cur.fetchone()
     if existing and existing["status"] == "published":
+        print(f"Tweet for {target_date} already published. Skipping.")
         cur.close()
         conn.close()
         return
 
     try:
         tweet_text = generate_daily_tweet()
+        print(f"Generated tweet: {tweet_text[:80]}...")
+
         result = post_tweet(tweet_text)
         twitter_id = result.get("data", {}).get("id", "")
+        print(f"Tweet posted! ID: {twitter_id}")
 
         cur.execute("""
             INSERT INTO twitter_posts (post_date, tweet_text, twitter_post_id, status, published_at)
@@ -135,17 +98,19 @@ def run_daily_tweet(target_date: date = None):
                 published_at = NOW()
         """, (target_date, tweet_text, twitter_id))
         conn.commit()
-        print(f"Tweet posted: {tweet_text[:50]}...")
 
     except Exception as e:
+        error_msg = str(e)
+        print(f"Tweet failed: {error_msg}")
+
         cur.execute("""
             INSERT INTO twitter_posts (post_date, status, error_message)
             VALUES (%s, 'failed', %s)
             ON CONFLICT (post_date) DO UPDATE SET
                 status = 'failed', error_message = EXCLUDED.error_message
-        """, (target_date, str(e)))
+        """, (target_date, error_msg))
         conn.commit()
-        print(f"Tweet failed: {e}")
+        raise
 
     finally:
         cur.close()

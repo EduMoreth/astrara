@@ -18,3 +18,4 @@ anthropic
 resend
 apscheduler
 Pillow
+tweepy

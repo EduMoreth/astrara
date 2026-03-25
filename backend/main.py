@@ -195,17 +195,28 @@ async def cron_instagram_daily(secret: str = ""):
 
 
 @app.get("/cron/twitter-daily")
-async def cron_twitter_daily(secret: str = ""):
+async def cron_twitter_daily(secret: str = "", force: bool = False):
     """External cron to trigger daily tweet."""
     expected = os.getenv("ADMIN_JWT_SECRET", "")
     if not expected or secret != expected:
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Forbidden")
     from datetime import date
+    # If force, delete existing record first
+    if force:
+        try:
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM twitter_posts WHERE post_date = %s", (date.today(),))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
     from services.twitter_service import run_daily_tweet
     try:
         run_daily_tweet(date.today())
-        return {"success": True}
+        return {"success": True, "date": str(date.today())}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
