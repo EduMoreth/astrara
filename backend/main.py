@@ -186,10 +186,10 @@ async def cron_instagram_daily(secret: str = ""):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     from datetime import date
-    from services.daily_post_orchestrator import run_daily_instagram_post
+    from services.daily_post_orchestrator import run_daily_all_platforms
     try:
-        run_daily_instagram_post(date.today())
-        return {"success": True, "date": str(date.today())}
+        result = run_daily_all_platforms(date.today())
+        return {"success": True, **result}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

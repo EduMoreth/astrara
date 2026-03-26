@@ -12,15 +12,43 @@ TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET", "")
 anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
-def post_tweet(text: str) -> dict:
-    """Post a tweet using tweepy (Twitter API v2 + OAuth 1.0a)."""
-    client = tweepy.Client(
+def _get_client():
+    """Get tweepy Client (v2) for posting."""
+    return tweepy.Client(
         consumer_key=TWITTER_API_KEY,
         consumer_secret=TWITTER_API_SECRET,
         access_token=TWITTER_ACCESS_TOKEN,
         access_token_secret=TWITTER_ACCESS_SECRET,
     )
+
+
+def _get_api_v1():
+    """Get tweepy API (v1.1) for media upload."""
+    auth = tweepy.OAuth1UserHandler(
+        TWITTER_API_KEY, TWITTER_API_SECRET,
+        TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET,
+    )
+    return tweepy.API(auth)
+
+
+def post_tweet(text: str) -> dict:
+    """Post a text-only tweet."""
+    client = _get_client()
     response = client.create_tweet(text=text)
+    tweet_id = response.data["id"]
+    return {"data": {"id": tweet_id}}
+
+
+def post_tweet_with_image(text: str, image_path: str) -> dict:
+    """Post a tweet with image. Upload via v1.1 API, post via v2."""
+    # Upload media via v1.1 (v2 doesn't support media upload directly)
+    api_v1 = _get_api_v1()
+    media = api_v1.media_upload(filename=image_path)
+    media_id = media.media_id
+
+    # Post tweet with media via v2
+    client = _get_client()
+    response = client.create_tweet(text=text, media_ids=[media_id])
     tweet_id = response.data["id"]
     return {"data": {"id": tweet_id}}
 

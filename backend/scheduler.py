@@ -11,35 +11,20 @@ def start_scheduler():
     """Start all scheduled jobs."""
     scheduler = BackgroundScheduler(timezone=BRT)
 
-    # Instagram daily post at 7:00 AM BRT
+    # Daily social media posts at 7:00 AM BRT (Instagram + Twitter unified)
     try:
-        from services.daily_post_orchestrator import run_daily_instagram_post
+        from services.daily_post_orchestrator import run_daily_all_platforms
         scheduler.add_job(
-            func=run_daily_instagram_post,
+            func=run_daily_all_platforms,
             trigger=CronTrigger(hour=7, minute=0, timezone=BRT),
-            id="daily_instagram_post",
-            name="Post diario Instagram",
+            id="daily_social_media",
+            name="Posts diarios (Instagram + Twitter)",
             replace_existing=True,
             misfire_grace_time=3600,
         )
-        logger.info("Scheduled: Instagram daily at 7:00 BRT")
+        logger.info("Scheduled: Social media daily at 7:00 BRT")
     except Exception as e:
-        logger.error(f"Failed to schedule Instagram: {e}")
-
-    # Twitter daily post at 7:15 AM BRT (15 min after Instagram)
-    try:
-        from services.twitter_service import run_daily_tweet
-        scheduler.add_job(
-            func=run_daily_tweet,
-            trigger=CronTrigger(hour=7, minute=15, timezone=BRT),
-            id="daily_twitter_post",
-            name="Tweet diario",
-            replace_existing=True,
-            misfire_grace_time=3600,
-        )
-        logger.info("Scheduled: Twitter daily at 7:15 BRT")
-    except Exception as e:
-        logger.error(f"Failed to schedule Twitter: {e}")
+        logger.error(f"Failed to schedule social media: {e}")
 
     # Weekly newsletter on Mondays at 8:00 AM BRT
     try:

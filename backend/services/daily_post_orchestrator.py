@@ -8,57 +8,63 @@ from database import get_connection
 logger = logging.getLogger("daily_post")
 
 
-def run_daily_instagram_post(target_date: date = None):
+def run_daily_all_platforms(target_date: date = None):
     """
-    Complete daily flow executed at 7am Brasilia time:
-    1. Calculate daily transits
-    2. Generate content with Claude
-    3. Generate image with Astrara branding
-    4. Publish to Instagram
-    5. Record in database
+    Master orchestrator: generates content ONCE and publishes to ALL platforms.
+    Called daily at 7am Brasilia. Ensures identical content everywhere.
     """
     if target_date is None:
         target_date = date.today()
 
+    logger.info(f"Starting daily content generation for {target_date}")
+
+    # 1. Calculate transits (shared across all platforms)
+    transits = get_daily_transits(target_date)
+    logger.info("Transits calculated.")
+
+    # 2. Generate content ONCE with Claude (shared across all platforms)
+    content = generate_daily_content(transits)
+    logger.info(f"Content generated: {content.get('titulo', 'N/A')}")
+
+    # 3. Generate image ONCE (shared by Instagram + Twitter)
+    image_path = generate_post_image(content, target_date)
+    logger.info(f"Image generated: {image_path}")
+
+    # 4. Publish to each platform
+    ig_result = _publish_instagram(target_date, content, image_path)
+    tw_result = _publish_twitter(target_date, content, image_path)
+
+    return {
+        "date": str(target_date),
+        "instagram": ig_result,
+        "twitter": tw_result,
+    }
+
+
+def run_daily_instagram_post(target_date: date = None):
+    """Legacy function for backward compatibility with existing cron."""
+    return run_daily_all_platforms(target_date)
+
+
+def _publish_instagram(target_date: date, content: dict, image_path: str) -> dict:
+    """Publish to Instagram."""
     conn = get_connection()
     cur = conn.cursor()
 
     try:
-        # Check if already published today
-        cur.execute(
-            "SELECT id, status FROM instagram_posts WHERE post_date = %s",
-            (target_date,),
-        )
+        cur.execute("SELECT status FROM instagram_posts WHERE post_date = %s", (target_date,))
         existing = cur.fetchone()
         if existing and existing["status"] == "published":
-            logger.info(f"Post de {target_date} ja publicado. Pulando.")
             cur.close()
             conn.close()
             return {"status": "already_published"}
 
-        logger.info(f"Iniciando geracao do post para {target_date}")
-
-        # 1. Transits
-        transits = get_daily_transits(target_date)
-        logger.info("Transitos calculados.")
-
-        # 2. Content via Claude
-        content = generate_daily_content(transits)
-        logger.info(f"Conteudo gerado: {content.get('titulo', 'N/A')}")
-
-        # 3. Image
-        image_path = generate_post_image(content, target_date)
-        logger.info(f"Imagem gerada: {image_path}")
-
-        # 4. Publish to Instagram
         caption = content.get("legenda_instagram", "")
         if content.get("hashtags"):
             caption += "\n\n" + content["hashtags"]
 
         result = publish_daily_post(image_path, caption)
-        logger.info(f"Post publicado: {result.get('permalink', 'N/A')}")
 
-        # 5. Record in database
         cur.execute("""
             INSERT INTO instagram_posts
                 (post_date, horoscope_text, transits_text, image_path,
@@ -70,36 +76,94 @@ def run_daily_instagram_post(target_date: date = None):
                 image_path = EXCLUDED.image_path,
                 instagram_media_id = EXCLUDED.instagram_media_id,
                 instagram_permalink = EXCLUDED.instagram_permalink,
-                status = 'published',
-                published_at = NOW(),
-                error_message = NULL
-        """, (
-            target_date,
-            content.get("horoscopo", ""),
-            content.get("transitos", ""),
-            image_path,
-            result.get("media_id", ""),
-            result.get("permalink", ""),
-        ))
+                status = 'published', published_at = NOW(), error_message = NULL
+        """, (target_date, content.get("horoscopo", ""), content.get("transitos", ""),
+              image_path, result.get("media_id", ""), result.get("permalink", "")))
         conn.commit()
-        logger.info("Post registrado no banco com sucesso.")
-
-        return {"status": "published", "permalink": result.get("permalink", "")}
+        logger.info(f"Instagram published: {result.get('permalink', '')}")
+        return {"status": "published"}
 
     except Exception as e:
-        logger.error(f"Erro no post diario: {e}")
+        logger.error(f"Instagram failed: {e}")
         try:
             cur.execute("""
                 INSERT INTO instagram_posts (post_date, status, error_message)
                 VALUES (%s, 'failed', %s)
-                ON CONFLICT (post_date) DO UPDATE SET
-                    status = 'failed', error_message = EXCLUDED.error_message
+                ON CONFLICT (post_date) DO UPDATE SET status = 'failed', error_message = EXCLUDED.error_message
             """, (target_date, str(e)))
             conn.commit()
         except Exception:
             pass
         return {"status": "failed", "error": str(e)}
+    finally:
+        cur.close()
+        conn.close()
 
+
+def _publish_twitter(target_date: date, content: dict, image_path: str) -> dict:
+    """Publish to Twitter with the SAME content and image."""
+    import os
+    TWITTER_API_KEY = os.getenv("TWITTER_API_KEY", "")
+    if not TWITTER_API_KEY:
+        return {"status": "skipped", "reason": "no_credentials"}
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("SELECT status FROM twitter_posts WHERE post_date = %s", (target_date,))
+        existing = cur.fetchone()
+        if existing and existing["status"] == "published":
+            cur.close()
+            conn.close()
+            return {"status": "already_published"}
+
+        # Build tweet from same content (shortened for 280 char limit)
+        horoscopo = content.get("horoscopo", "")
+        titulo = content.get("titulo", "")
+        energia = content.get("energia_do_dia", "")
+
+        # Compose tweet: emoji + title + short horoscope + link + hashtags
+        tweet = f"✨ {titulo}\n\n"
+        # Truncate horoscope to fit
+        remaining = 280 - len(tweet) - 40  # reserve space for link + hashtags
+        if len(horoscopo) > remaining:
+            horoscopo = horoscopo[:remaining-3] + "..."
+        tweet += horoscopo + "\n\n"
+        tweet += "astrara.online\n"
+        tweet += "#Astrologia #Horoscopo"
+
+        if len(tweet) > 280:
+            tweet = tweet[:277] + "..."
+
+        # Post tweet with image using tweepy
+        from services.twitter_service import post_tweet_with_image
+        result = post_tweet_with_image(tweet, image_path)
+        twitter_id = result.get("data", {}).get("id", "")
+
+        cur.execute("""
+            INSERT INTO twitter_posts (post_date, tweet_text, twitter_post_id, status, published_at)
+            VALUES (%s, %s, %s, 'published', NOW())
+            ON CONFLICT (post_date) DO UPDATE SET
+                tweet_text = EXCLUDED.tweet_text, twitter_post_id = EXCLUDED.twitter_post_id,
+                status = 'published', published_at = NOW()
+        """, (target_date, tweet, twitter_id))
+        conn.commit()
+        logger.info(f"Twitter published: {twitter_id}")
+        return {"status": "published"}
+
+    except Exception as e:
+        logger.error(f"Twitter failed: {e}")
+        try:
+            cur.execute("""
+                INSERT INTO twitter_posts (post_date, status, error_message)
+                VALUES (%s, 'failed', %s)
+                ON CONFLICT (post_date) DO UPDATE SET status = 'failed', error_message = EXCLUDED.error_message
+            """, (target_date, str(e)))
+            conn.commit()
+        except Exception:
+            pass
+        return {"status": "failed", "error": str(e)}
     finally:
         cur.close()
         conn.close()
