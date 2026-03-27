@@ -99,14 +99,33 @@ def run_daily_tweet(target_date: date = None):
     conn = get_connection()
     cur = conn.cursor()
 
-    # Check if already posted today
-    cur.execute("SELECT status FROM twitter_posts WHERE post_date = %s", (target_date,))
-    existing = cur.fetchone()
-    if existing and existing["status"] == "published":
-        print(f"Tweet for {target_date} already published. Skipping.")
-        cur.close()
-        conn.close()
-        return
+    # Atomically claim the slot with a 'pending' record to prevent race conditions
+    cur.execute("""
+        INSERT INTO twitter_posts (post_date, status)
+        VALUES (%s, 'pending')
+        ON CONFLICT (post_date) DO NOTHING
+    """, (target_date,))
+    conn.commit()
+
+    if cur.rowcount == 0:
+        cur.execute("SELECT status FROM twitter_posts WHERE post_date = %s", (target_date,))
+        existing = cur.fetchone()
+        if existing and existing["status"] in ("published", "pending"):
+            print(f"Tweet for {target_date}: {existing['status']}. Skipping.")
+            cur.close()
+            conn.close()
+            return
+        # Status is 'failed' — retry
+        cur.execute("""
+            UPDATE twitter_posts SET status = 'pending', error_message = NULL
+            WHERE post_date = %s AND status = 'failed'
+        """, (target_date,))
+        conn.commit()
+        if cur.rowcount == 0:
+            print(f"Tweet for {target_date}: already being retried. Skipping.")
+            cur.close()
+            conn.close()
+            return
 
     try:
         tweet_text = generate_daily_tweet()

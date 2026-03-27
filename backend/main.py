@@ -165,7 +165,7 @@ async def startup():
             cur.close()
             conn.close()
             if not row or row["status"] == "failed":
-                print(f"Missed post detected for {date.today()}, triggering now...")
+                print(f"Missed post detected for {date.today()}, triggering now (status: {row['status'] if row else 'none'})...")
                 from services.daily_post_orchestrator import run_daily_instagram_post
                 run_daily_instagram_post(date.today())
                 print(f"Recovery post for {date.today()} completed!")

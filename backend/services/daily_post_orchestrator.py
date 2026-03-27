@@ -18,6 +18,24 @@ def run_daily_all_platforms(target_date: date = None):
 
     logger.info(f"Starting daily content generation for {target_date}")
 
+    # Early check: skip if both platforms already published (avoids wasting AI calls)
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT status FROM instagram_posts WHERE post_date = %s", (target_date,))
+        ig_row = cur.fetchone()
+        cur.execute("SELECT status FROM twitter_posts WHERE post_date = %s", (target_date,))
+        tw_row = cur.fetchone()
+        cur.close()
+        conn.close()
+        ig_done = ig_row and ig_row["status"] in ("published", "pending")
+        tw_done = tw_row and tw_row["status"] in ("published", "pending")
+        if ig_done and tw_done:
+            logger.info(f"Both platforms already handled for {target_date}. Skipping content generation.")
+            return {"date": str(target_date), "instagram": {"status": ig_row["status"]}, "twitter": {"status": tw_row["status"]}}
+    except Exception as e:
+        logger.warning(f"Early dedup check failed, proceeding anyway: {e}")
+
     # 1. Calculate transits (shared across all platforms)
     transits = get_daily_transits(target_date)
     logger.info("Transits calculated.")
@@ -52,12 +70,35 @@ def _publish_instagram(target_date: date, content: dict, image_path: str) -> dic
     cur = conn.cursor()
 
     try:
-        cur.execute("SELECT status FROM instagram_posts WHERE post_date = %s", (target_date,))
-        existing = cur.fetchone()
-        if existing and existing["status"] == "published":
-            cur.close()
-            conn.close()
-            return {"status": "already_published"}
+        # Atomically claim the slot with a 'pending' record to prevent race conditions
+        cur.execute("""
+            INSERT INTO instagram_posts (post_date, status)
+            VALUES (%s, 'pending')
+            ON CONFLICT (post_date) DO NOTHING
+        """, (target_date,))
+        conn.commit()
+
+        if cur.rowcount == 0:
+            # Record already exists — check its status
+            cur.execute("SELECT status FROM instagram_posts WHERE post_date = %s", (target_date,))
+            existing = cur.fetchone()
+            if existing and existing["status"] in ("published", "pending"):
+                cur.close()
+                conn.close()
+                status = existing["status"]
+                logger.info(f"Instagram for {target_date}: {status}. Skipping.")
+                return {"status": "already_published" if status == "published" else "in_progress"}
+            # Status is 'failed' — retry by updating to 'pending'
+            cur.execute("""
+                UPDATE instagram_posts SET status = 'pending', error_message = NULL
+                WHERE post_date = %s AND status = 'failed'
+            """, (target_date,))
+            conn.commit()
+            if cur.rowcount == 0:
+                # Another process already retrying
+                cur.close()
+                conn.close()
+                return {"status": "in_progress"}
 
         caption = content.get("legenda_instagram", "")
         if content.get("hashtags"):
@@ -111,12 +152,33 @@ def _publish_twitter(target_date: date, content: dict, image_path: str) -> dict:
     cur = conn.cursor()
 
     try:
-        cur.execute("SELECT status FROM twitter_posts WHERE post_date = %s", (target_date,))
-        existing = cur.fetchone()
-        if existing and existing["status"] == "published":
-            cur.close()
-            conn.close()
-            return {"status": "already_published"}
+        # Atomically claim the slot with a 'pending' record to prevent race conditions
+        cur.execute("""
+            INSERT INTO twitter_posts (post_date, status)
+            VALUES (%s, 'pending')
+            ON CONFLICT (post_date) DO NOTHING
+        """, (target_date,))
+        conn.commit()
+
+        if cur.rowcount == 0:
+            cur.execute("SELECT status FROM twitter_posts WHERE post_date = %s", (target_date,))
+            existing = cur.fetchone()
+            if existing and existing["status"] in ("published", "pending"):
+                cur.close()
+                conn.close()
+                status = existing["status"]
+                logger.info(f"Twitter for {target_date}: {status}. Skipping.")
+                return {"status": "already_published" if status == "published" else "in_progress"}
+            # Status is 'failed' — retry
+            cur.execute("""
+                UPDATE twitter_posts SET status = 'pending', error_message = NULL
+                WHERE post_date = %s AND status = 'failed'
+            """, (target_date,))
+            conn.commit()
+            if cur.rowcount == 0:
+                cur.close()
+                conn.close()
+                return {"status": "in_progress"}
 
         # Build tweet from same content (shortened for 280 char limit)
         horoscopo = content.get("horoscopo", "")
