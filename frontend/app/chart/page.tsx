@@ -37,7 +37,18 @@ export default function ChartPage() {
       .then(setInterpProduct)
       .catch(() => {})
 
-    // Check if coming from dashboard with auto-generate flag
+    // First check if there's a cached chart result (e.g. from dashboard "Ver mapa")
+    const saved = sessionStorage.getItem('astrara_chart_result')
+    if (saved) {
+      try {
+        setResult(JSON.parse(saved))
+      } catch { /* ignore */ }
+      // Don't auto-generate if we already have a result
+      sessionStorage.removeItem('astrara_auto_generate')
+      return
+    }
+
+    // Check if coming from dashboard with auto-generate flag (only if no cached result)
     const autoGen = sessionStorage.getItem('astrara_auto_generate')
     if (autoGen) {
       sessionStorage.removeItem('astrara_auto_generate')
@@ -46,14 +57,6 @@ export default function ChartPage() {
         handleSubmit(formData)
       } catch { /* ignore */ }
       return
-    }
-
-    // Restore chart result from sessionStorage (survives auth/payment redirects)
-    const saved = sessionStorage.getItem('astrara_chart_result')
-    if (saved) {
-      try {
-        setResult(JSON.parse(saved))
-      } catch { /* ignore */ }
     }
   }, [])
 
@@ -156,6 +159,10 @@ export default function ChartPage() {
       }
       const data = await res.json()
       if (data.checkout_url) {
+        // Save session_id so we can verify payment when browser closes (mobile)
+        if (data.session_id) {
+          localStorage.setItem('astrara_payment_session', data.session_id)
+        }
         const { openExternalUrl } = await import('@/lib/navigation')
         await openExternalUrl(data.checkout_url)
       }
@@ -174,7 +181,7 @@ export default function ChartPage() {
         return
       }
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 min timeout
+      const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 min timeout
 
       const res = await fetch(`${API_URL}/chart/interpretation/generate-pdf`, {
         method: 'POST',
@@ -200,9 +207,10 @@ export default function ChartPage() {
       toast.success('PDF baixado com sucesso!')
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        toast.error('A geracao do PDF demorou demais. Tente novamente.')
+        toast.error('A geracao do PDF demorou demais. Por favor, tente novamente em alguns minutos.')
       } else {
-        toast.error(err instanceof Error ? err.message : 'Erro ao gerar PDF')
+        const msg = err instanceof Error ? err.message : 'Erro ao gerar PDF'
+        toast.error(`Erro ao gerar PDF: ${msg}. Se o problema persistir, entre em contato com o suporte.`)
       }
     } finally {
       setDownloadingPdf(false)

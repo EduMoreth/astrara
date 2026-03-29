@@ -23,11 +23,13 @@ ALLOWED_ORIGINS = [
     "http://localhost",  # Capacitor Android (http scheme)
     "https://localhost",  # Capacitor Android (https scheme)
     "capacitor://localhost",  # Capacitor iOS
+    "capacitor://app",  # Capacitor Android (capacitor scheme)
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^capacitor://.*$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

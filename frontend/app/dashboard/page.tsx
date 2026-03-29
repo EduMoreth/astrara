@@ -54,6 +54,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [limits, setLimits] = useState<ChartLimit | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [credits, setCredits] = useState<number | null>(null)
   const user = getUserFromToken()
 
   function loadData() {
@@ -66,6 +67,11 @@ export default function DashboardPage() {
     fetch(`${API_URL}/user/charts/limit`, { headers: getHeaders() })
       .then(r => r.json())
       .then(setLimits)
+      .catch(() => {})
+
+    fetch(`${API_URL}/user/credits`, { headers: getHeaders() })
+      .then(r => r.json())
+      .then(data => setCredits(data.credits ?? data.balance ?? 0))
       .catch(() => {})
   }
 
@@ -110,14 +116,21 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="font-display text-3xl font-light text-stardust">Meus mapas</h1>
-            {limits && (
-              <p className="text-muted text-sm mt-1">
-                {limits.saved_count} de {maxDisplay} mapas salvos
-                {limits.max_charts === 1 && (
-                  <span className="text-gold/60 ml-2">(plano gratuito)</span>
-                )}
-              </p>
-            )}
+            <div className="flex items-center gap-4 mt-1">
+              {limits && (
+                <p className="text-muted text-sm">
+                  {limits.saved_count} de {maxDisplay} mapas salvos
+                  {limits.max_charts === 1 && (
+                    <span className="text-gold/60 ml-2">(plano gratuito)</span>
+                  )}
+                </p>
+              )}
+              {credits !== null && (
+                <span className="text-gold text-sm font-medium">
+                  {credits} credito{credits !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
           <Link href="/chart" className="btn-primary text-sm">+ Novo mapa</Link>
         </div>
@@ -173,7 +186,7 @@ export default function DashboardPage() {
                   <div className="flex justify-center gap-3 mt-5">
                     <button
                       onClick={async () => {
-                        // Re-generate chart from saved birth data
+                        // Store the full saved chart data directly (no API re-call needed)
                         const [y, m, d] = (chart.birth_date || '').split('-')
                         const [hr, mn] = (chart.birth_time || '12:00').split(':')
                         const formData = {
@@ -188,10 +201,14 @@ export default function DashboardPage() {
                         }
                         // Save form data so chart page shows birth info
                         sessionStorage.setItem('astrara_last_form', JSON.stringify(formData))
-                        // Remove old result so chart page recalculates
-                        sessionStorage.removeItem('astrara_chart_result')
-                        // Set flag to auto-generate on chart page load
-                        sessionStorage.setItem('astrara_auto_generate', JSON.stringify(formData))
+                        // Store the cached chart result directly — no need to recalculate
+                        sessionStorage.setItem('astrara_chart_result', JSON.stringify({
+                          positions: chart.positions_json,
+                          houses: {},
+                          aspects: [],
+                          svg: chart.svg_data || '',
+                        }))
+                        // Do NOT set astrara_auto_generate — use cached data
                         router.push('/chart')
                       }}
                       className="text-gold hover:text-gold/80 text-xs transition-colors"

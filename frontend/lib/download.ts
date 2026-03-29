@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core'
 
 /**
- * Download a file. On native (Capacitor), saves to device Downloads folder.
+ * Download a file. On native (Capacitor), saves to device Documents folder.
  * On web, uses the standard blob download approach.
  */
 export async function downloadFile(
@@ -14,25 +14,51 @@ export async function downloadFile(
 
     const base64 = await blobToBase64(blob)
 
-    await Filesystem.writeFile({
-      path: filename,
-      data: base64,
-      directory: Directory.Documents,
-    })
-
-    // Try to open share dialog so user can see/open the file
     try {
-      const { Share } = await import('@capacitor/share')
-      const result = await Filesystem.getUri({
+      await Filesystem.writeFile({
         path: filename,
+        data: base64,
         directory: Directory.Documents,
       })
-      await Share.share({
-        title: filename,
-        url: result.uri,
-      })
-    } catch {
-      // Share not available, just notify
+
+      // Notify user the file was saved
+      try {
+        const { Toast } = await import('@capacitor/toast')
+        await Toast.show({ text: `Arquivo salvo em Documentos: ${filename}`, duration: 'long' })
+      } catch {
+        // Toast plugin not available, use alert as fallback
+        alert(`Arquivo salvo em Documentos: ${filename}`)
+      }
+
+      // Try to open share dialog so user can see/open the file
+      try {
+        const { Share } = await import('@capacitor/share')
+        const result = await Filesystem.getUri({
+          path: filename,
+          directory: Directory.Documents,
+        })
+        await Share.share({
+          title: filename,
+          url: result.uri,
+        })
+      } catch {
+        // Share not available, already notified via toast
+      }
+    } catch (writeError) {
+      console.error('Filesystem.writeFile failed:', writeError)
+
+      // Fallback: use Share plugin to let user choose where to save
+      try {
+        const { Share } = await import('@capacitor/share')
+        const dataUrl = `data:${blob.type};base64,${base64}`
+        await Share.share({
+          title: filename,
+          url: dataUrl,
+        })
+      } catch (shareError) {
+        console.error('Share fallback also failed:', shareError)
+        throw new Error('Nao foi possivel salvar o arquivo. Verifique as permissoes do aplicativo.')
+      }
     }
   } else {
     // Web: standard download
@@ -59,24 +85,48 @@ export async function downloadDataUrl(
     // Extract base64 from data URL
     const base64 = dataUrl.split(',')[1]
 
-    await Filesystem.writeFile({
-      path: filename,
-      data: base64,
-      directory: Directory.Documents,
-    })
-
     try {
-      const { Share } = await import('@capacitor/share')
-      const result = await Filesystem.getUri({
+      await Filesystem.writeFile({
         path: filename,
+        data: base64,
         directory: Directory.Documents,
       })
-      await Share.share({
-        title: filename,
-        url: result.uri,
-      })
-    } catch {
-      // Share not available
+
+      // Notify user the file was saved
+      try {
+        const { Toast } = await import('@capacitor/toast')
+        await Toast.show({ text: `Arquivo salvo em Documentos: ${filename}`, duration: 'long' })
+      } catch {
+        alert(`Arquivo salvo em Documentos: ${filename}`)
+      }
+
+      try {
+        const { Share } = await import('@capacitor/share')
+        const result = await Filesystem.getUri({
+          path: filename,
+          directory: Directory.Documents,
+        })
+        await Share.share({
+          title: filename,
+          url: result.uri,
+        })
+      } catch {
+        // Share not available, already notified via toast
+      }
+    } catch (writeError) {
+      console.error('Filesystem.writeFile failed:', writeError)
+
+      // Fallback: use Share plugin to let user choose where to save
+      try {
+        const { Share } = await import('@capacitor/share')
+        await Share.share({
+          title: filename,
+          url: dataUrl,
+        })
+      } catch (shareError) {
+        console.error('Share fallback also failed:', shareError)
+        throw new Error('Nao foi possivel salvar o arquivo. Verifique as permissoes do aplicativo.')
+      }
     }
   } else {
     const a = document.createElement('a')
