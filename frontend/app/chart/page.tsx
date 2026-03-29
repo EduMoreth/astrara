@@ -217,9 +217,14 @@ export default function ChartPage() {
     }
   }
 
-  // Check if user just returned from payment
+  // Check if user just returned from payment or already has credits
   const [paidRecently, setPaidRecently] = useState(false)
   useEffect(() => {
+    if (!isLoggedIn) return
+
+    const token = localStorage.getItem('astrara_token')
+    if (!token) return
+
     // Check for payment return — from URL params (web) or localStorage (mobile)
     const urlParams = new URLSearchParams(window.location.search)
     let sessionId = urlParams.get('session_id')
@@ -230,10 +235,10 @@ export default function ChartPage() {
       if (sessionId) localStorage.removeItem('astrara_payment_session')
     }
 
-    if (sessionId && isLoggedIn) {
-      const token = localStorage.getItem('astrara_token')
+    if (sessionId) {
+      // Try to verify (this is now idempotent — safe if webhook already fulfilled)
       fetch(`${API_URL}/checkout/verify/${sessionId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
       })
         .then(r => r.json())
         .then(data => {
@@ -243,7 +248,18 @@ export default function ChartPage() {
             window.history.replaceState({}, '', '/chart')
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          // Verify failed (maybe network issue), but webhook may have added credits.
+          // Fall through to the credits check below.
+        })
+        .finally(() => {
+          // Always check credits as a fallback — webhook may have already delivered them
+          _checkCreditsAndUnlock(token)
+        })
+    } else {
+      // No session_id, but user might have credits from webhook or previous purchase
+      // Check on every chart page load so returning users see their interpretation
+      _checkCreditsAndUnlock(token)
     }
 
     // On mobile, also listen for browser close event to re-check payment
@@ -256,17 +272,20 @@ export default function ChartPage() {
               if (pendingSession) {
                 localStorage.removeItem('astrara_payment_session')
                 const tk = localStorage.getItem('astrara_token')
-                fetch(`${API_URL}/checkout/verify/${pendingSession}`, {
-                  headers: tk ? { Authorization: `Bearer ${tk}` } : {},
-                })
-                  .then(r => r.json())
-                  .then(data => {
-                    if (data.success) {
-                      setPaidRecently(true)
-                      toast.success('Pagamento confirmado! Clique em "Baixar interpretacao em PDF".')
-                    }
+                if (tk) {
+                  fetch(`${API_URL}/checkout/verify/${pendingSession}`, {
+                    headers: { Authorization: `Bearer ${tk}` },
                   })
-                  .catch(() => {})
+                    .then(r => r.json())
+                    .then(data => {
+                      if (data.success) {
+                        setPaidRecently(true)
+                        toast.success('Pagamento confirmado! Clique em "Baixar interpretacao em PDF".')
+                      }
+                    })
+                    .catch(() => {})
+                    .finally(() => _checkCreditsAndUnlock(tk))
+                }
               }
             })
           })
@@ -274,6 +293,20 @@ export default function ChartPage() {
       })
     }
   }, [isLoggedIn])
+
+  /** Check if user has credits/purchase and auto-unlock interpretation */
+  function _checkCreditsAndUnlock(token: string) {
+    fetch(`${API_URL}/chart/check-interpretation-access`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(access => {
+        if (access.has_access && !paidRecently) {
+          setPaidRecently(true)
+        }
+      })
+      .catch(() => {})
+  }
 
   const priceLabel = interpProduct
     ? `R$ ${(interpProduct.price_cents / 100).toFixed(2).replace('.', ',')}`

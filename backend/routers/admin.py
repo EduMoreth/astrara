@@ -1333,6 +1333,63 @@ async def get_instagram_post(post_date: str, admin: str = Depends(verify_admin_t
     return {**post, "id": str(post["id"]), "post_date": str(post["post_date"])}
 
 
+@router.post("/purchases/recover-pending")
+async def recover_pending_purchases(request: Request, admin: str = Depends(verify_admin_token)):
+    """
+    Recover pending purchases by checking Stripe for payment status.
+    Finds all purchases with status 'pending' and verifies them against Stripe.
+    Fulfills any that are actually paid.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT p.id, p.user_id, p.stripe_payment_id, p.product_type, p.status
+        FROM purchases p
+        WHERE p.status = 'pending'
+        ORDER BY p.created_at DESC
+        LIMIT 50
+    """)
+    pending = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    recovered = 0
+    errors = []
+
+    for purchase in pending:
+        session_id = purchase.get("stripe_payment_id")
+        user_id = str(purchase["user_id"]) if purchase.get("user_id") else None
+        if not session_id or not user_id:
+            continue
+
+        try:
+            from services.stripe_service import verify_payment
+            result = verify_payment(session_id)
+            if result["status"] == "paid":
+                from routers.checkout import _fulfill_purchase
+                credits = _fulfill_purchase(
+                    session_id=session_id,
+                    user_id=user_id,
+                    product_id=result.get("product_id", ""),
+                )
+                recovered += 1
+                print(f"[Recovery] Fulfilled purchase {session_id} for user {user_id}, credits: {credits}")
+        except Exception as e:
+            errors.append({"session_id": session_id, "error": str(e)})
+
+    log_action(admin, "recover_pending_purchases", "purchase", "",
+               {"recovered": recovered, "total_pending": len(pending), "errors": errors},
+               request.client.host if request.client else None)
+
+    return {
+        "success": True,
+        "total_pending": len(pending),
+        "recovered": recovered,
+        "errors": errors,
+    }
+
+
 @router.delete("/instagram/posts/{post_date}")
 async def delete_instagram_post(post_date: str, request: Request,
                                 admin: str = Depends(verify_admin_token)):

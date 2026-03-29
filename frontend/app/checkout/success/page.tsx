@@ -33,26 +33,30 @@ function CheckoutSuccessContent() {
         // Store session_id so the app can detect payment
         try { localStorage.setItem('astrara_payment_session', sessionId) } catch {}
 
-        if (data.success || data.status === 'paid' || data.payment_status === 'paid') {
-          setStatus('success')
+        // Always treat as success — Stripe only redirects here on successful payment.
+        // The webhook will handle credit delivery even if verify had issues.
+        setStatus('success')
 
-          // On web (not in-app browser), auto-redirect after a short delay
-          if (!isNative) {
-            setTimeout(() => {
-              router.push(`/chart?session_id=${sessionId}`)
-            }, 3000)
-          }
-        } else {
-          // Payment went through Stripe but verification returned unexpected shape
-          // Still treat as success since Stripe redirected here
-          setStatus('success')
+        // On web (not in-app browser), auto-redirect after a short delay
+        if (!isNative) {
+          setTimeout(() => {
+            router.push(`/chart?session_id=${sessionId}`)
+          }, 3000)
         }
       })
       .catch(() => {
         // API might be unreachable from in-app browser domain (CORS) or network error.
         // Since Stripe only redirects here on successful payment, treat as success.
+        // The Stripe webhook will handle credit delivery reliably.
         try { localStorage.setItem('astrara_payment_session', sessionId) } catch {}
         setStatus('success')
+
+        // Still redirect — credits will be added by webhook
+        if (!isNative) {
+          setTimeout(() => {
+            router.push(`/chart?session_id=${sessionId}`)
+          }, 3000)
+        }
       })
   }, [sessionId, router, isNative])
 
