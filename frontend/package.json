@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "build:mobile": "npx cross-env CAPACITOR_BUILD=true next build",
+    "build:mobile": "node -e \"require('fs').writeFileSync('.mobile-build','1')\" && next build && node -e \"try{require('fs').unlinkSync('.mobile-build')}catch{}\"",
     "cap:sync": "npx cap sync",
     "cap:android": "npx cap open android",
     "cap:ios": "npx cap open ios",
