@@ -30,9 +30,11 @@ def search_cities(query: str, country: str | None = None, limit: int = 8) -> lis
     all_results = []
 
     try:
-        # Strategy 1: Structured query (most accurate)
+        # Strategy 1: Free-text search with country_codes filter (best for partial names)
+        # Using q parameter instead of structured {"city": query} because structured
+        # query treats "Bras" as exact match and misses "Brasilia"
         results1 = geolocator.geocode(
-            query={"city": query},
+            query,
             exactly_one=False,
             limit=10,
             language="pt",
@@ -43,7 +45,7 @@ def search_cities(query: str, country: str | None = None, limit: int = 8) -> lis
         if results1:
             all_results.extend(results1)
 
-        # Strategy 2: Free-text with country (catches more matches)
+        # Strategy 2: Free-text with country name appended (catches more matches)
         search_text = f"{query}, {country}" if country else query
         results2 = geolocator.geocode(
             search_text,
@@ -52,20 +54,21 @@ def search_cities(query: str, country: str | None = None, limit: int = 8) -> lis
             language="pt",
             timeout=10,
             addressdetails=True,
+            country_codes=country_code.lower() if country_code else None,
         )
         if results2:
             all_results.extend(results2)
 
-        # Strategy 3: Just the query with country code filter
-        if country_code and not all_results:
+        # Strategy 3: Append " city" hint to bias towards city results
+        if len(all_results) < 3:
             results3 = geolocator.geocode(
-                query,
+                f"{query} city",
                 exactly_one=False,
                 limit=10,
                 language="pt",
                 timeout=10,
                 addressdetails=True,
-                country_codes=country_code.lower(),
+                country_codes=country_code.lower() if country_code else None,
             )
             if results3:
                 all_results.extend(results3)
