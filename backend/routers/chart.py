@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Header, Request
@@ -124,11 +125,13 @@ async def get_interpretation_product():
 
 @router.post("/interpretation/{chart_id}/pdf")
 async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = Header(None)):
-    """Generate and return the interpretation PDF. Requires auth + credits/purchase."""
+    """Generate and return the interpretation PDF. Requires auth + credits/purchase.
+    If already generated for this user+chart, serve cached version without deducting credits."""
     user = get_optional_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Login necessario")
 
+    user_id = user["sub"]
     conn = get_connection()
     cur = conn.cursor()
 
@@ -140,8 +143,32 @@ async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = H
         conn.close()
         raise HTTPException(status_code=404, detail="Mapa nao encontrado")
 
-    # Check if user has credits or has purchased
-    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user["sub"],))
+    positions = chart_data.get("positions_json") or {}
+    name = chart_data.get("name", "")
+    pos_hash = _positions_hash(positions)
+
+    # ── Check cache first ──
+    cur.execute("""
+        SELECT interpretation_text FROM chart_interpretations
+        WHERE user_id = %s AND positions_hash = %s
+    """, (user_id, pos_hash))
+    cached = cur.fetchone()
+
+    if cached:
+        cur.close()
+        conn.close()
+        interpretation_text = cached["interpretation_text"]
+        pdf_bytes = generate_pdf(name, positions, interpretation_text)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="astrara-mapa-{name.lower().replace(" ", "-")}.pdf"'
+            },
+        )
+
+    # ── No cache — check credits/purchase ──
+    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user_id,))
     credits = cur.fetchone()
     has_credits = credits and credits["credits_balance"] > 0
 
@@ -149,7 +176,7 @@ async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = H
         SELECT id FROM purchases
         WHERE user_id = %s AND status = 'completed'
         ORDER BY created_at DESC LIMIT 1
-    """, (user["sub"],))
+    """, (user_id,))
     has_purchase = cur.fetchone() is not None
 
     if not has_credits and not has_purchase:
@@ -164,21 +191,29 @@ async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = H
                                     total_used = total_used + 1,
                                     updated_at = NOW()
             WHERE user_id = %s
-        """, (user["sub"],))
+        """, (user_id,))
         cur.execute("""
             INSERT INTO credit_transactions (user_id, type, amount, description)
             VALUES (%s, 'use', -1, 'Interpretacao do mapa astral')
-        """, (user["sub"],))
+        """, (user_id,))
         conn.commit()
-
-    cur.close()
-    conn.close()
-
-    positions = chart_data.get("positions_json") or {}
-    name = chart_data.get("name", "")
 
     # Generate interpretation
     interpretation_text = generate_interpretation(positions, name)
+
+    # ── Cache the interpretation ──
+    try:
+        cur.execute("""
+            INSERT INTO chart_interpretations (user_id, positions_hash, name, interpretation_text)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id, positions_hash) DO NOTHING
+        """, (user_id, pos_hash, name, interpretation_text))
+        conn.commit()
+    except Exception as e:
+        print(f"Cache save error: {e}")
+
+    cur.close()
+    conn.close()
 
     # Generate PDF
     pdf_bytes = generate_pdf(name, positions, interpretation_text)
@@ -234,18 +269,51 @@ class PdfRequest(BaseModel):
     name: str = "Meu Mapa Astral"
 
 
+def _positions_hash(positions: dict) -> str:
+    """Generate a stable hash from chart positions for cache lookup."""
+    canonical = json.dumps(positions, sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 @router.post("/interpretation/generate-pdf")
 async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Optional[str] = Header(None)):
-    """Generate PDF directly from positions sent by frontend. Requires auth + credits/purchase."""
+    """Generate PDF directly from positions sent by frontend. Requires auth + credits/purchase.
+    If the interpretation was already generated for this user+positions, serve cached version
+    without deducting another credit."""
     user = get_optional_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Login necessario para baixar o PDF")
 
+    user_id = user["sub"]
+    pos_hash = _positions_hash(data.positions)
+
     conn = get_connection()
     cur = conn.cursor()
 
-    # Check if user has credits or has completed a purchase
-    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user["sub"],))
+    # ── Check cache: if this user already generated this interpretation, reuse it ──
+    cur.execute("""
+        SELECT interpretation_text FROM chart_interpretations
+        WHERE user_id = %s AND positions_hash = %s
+    """, (user_id, pos_hash))
+    cached = cur.fetchone()
+
+    if cached:
+        # Already paid before — serve cached PDF without deducting credits
+        cur.close()
+        conn.close()
+        interpretation_text = cached["interpretation_text"]
+        pdf_bytes = generate_pdf(data.name, data.positions, interpretation_text)
+        safe_name = data.name.lower().replace(" ", "-")[:30]
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="astrara-interpretacao-{safe_name}.pdf"'
+            },
+        )
+
+    # ── No cache — check if user has credits or has completed a purchase ──
+    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user_id,))
     credits_row = cur.fetchone()
     has_credits = credits_row and credits_row["credits_balance"] > 0
 
@@ -253,7 +321,7 @@ async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Op
         SELECT id FROM purchases
         WHERE user_id = %s AND status = 'completed'
         ORDER BY created_at DESC LIMIT 1
-    """, (user["sub"],))
+    """, (user_id,))
     has_purchase = cur.fetchone() is not None
 
     if not has_credits and not has_purchase:
@@ -272,20 +340,31 @@ async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Op
                 total_used = total_used + 1,
                 updated_at = NOW()
             WHERE user_id = %s AND credits_balance > 0
-        """, (user["sub"],))
+        """, (user_id,))
 
         cur.execute("""
             INSERT INTO credit_transactions (user_id, type, amount, description)
             VALUES (%s, 'use', -1, 'Interpretacao completa do mapa astral (PDF)')
-        """, (user["sub"],))
+        """, (user_id,))
 
         conn.commit()
 
-    cur.close()
-    conn.close()
-
     # Generate interpretation with AI
     interpretation_text = generate_interpretation(data.positions, data.name)
+
+    # ── Cache the interpretation for future re-downloads ──
+    try:
+        cur.execute("""
+            INSERT INTO chart_interpretations (user_id, positions_hash, name, interpretation_text)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id, positions_hash) DO NOTHING
+        """, (user_id, pos_hash, data.name, interpretation_text))
+        conn.commit()
+    except Exception as e:
+        print(f"Cache save error: {e}")
+
+    cur.close()
+    conn.close()
 
     # Generate beautiful PDF
     pdf_bytes = generate_pdf(data.name, data.positions, interpretation_text)

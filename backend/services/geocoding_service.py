@@ -78,6 +78,7 @@ def search_cities(query: str, country: str | None = None, limit: int = 8) -> lis
 
     cities = []
     seen = set()
+    query_lower = query.lower().strip()
 
     for loc in all_results:
         addr = loc.raw.get("address", {})
@@ -104,13 +105,28 @@ def search_cities(query: str, country: str | None = None, limit: int = 8) -> lis
 
         display = f"{city_name}, {state}, {country_name}" if state else f"{city_name}, {country_name}"
 
-        # Dedup by rounded coordinates
-        key = f"{round(loc.latitude, 1)},{round(loc.longitude, 1)}"
-        if key in seen:
+        # Dedup by city name + state (prevents "Brasilia, DF" appearing twice)
+        dedup_key = f"{city_name.lower()}|{state.lower()}"
+        if dedup_key in seen:
             continue
-        seen.add(key)
+        seen.add(dedup_key)
 
         tz_str = _get_timezone(loc.latitude, loc.longitude)
+
+        # Compute relevance score for sorting:
+        # 0 = exact match, 1 = starts with query, 2 = contains query, 3 = other
+        name_lower = city_name.lower()
+        if name_lower == query_lower:
+            relevance = 0
+        elif name_lower.startswith(query_lower):
+            relevance = 1
+        elif query_lower in name_lower:
+            relevance = 2
+        else:
+            relevance = 3
+
+        # OSM importance (higher = more populous/important), default 0
+        importance = float(loc.raw.get("importance", 0))
 
         cities.append({
             "city": city_name,
@@ -120,12 +136,19 @@ def search_cities(query: str, country: str | None = None, limit: int = 8) -> lis
             "lat": round(loc.latitude, 6),
             "lng": round(loc.longitude, 6),
             "tz_str": tz_str,
+            "_relevance": relevance,
+            "_importance": importance,
         })
 
-        if len(cities) >= limit:
-            break
+    # Sort: best relevance first, then by OSM importance (descending)
+    cities.sort(key=lambda c: (c["_relevance"], -c["_importance"]))
 
-    return cities
+    # Remove internal sort keys before returning
+    for c in cities:
+        del c["_relevance"]
+        del c["_importance"]
+
+    return cities[:limit]
 
 
 def geocode(city: str, country: str | None = None) -> dict:

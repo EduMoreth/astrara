@@ -233,6 +233,19 @@ def init_db():
         );
     """)
 
+    # ── Chart Interpretation Cache ────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS chart_interpretations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+            positions_hash VARCHAR(64) NOT NULL,
+            name VARCHAR(100),
+            interpretation_text TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(user_id, positions_hash)
+        );
+    """)
+
     # ── Instagram Posts ──────────────────────────────────
     cur.execute("""
         CREATE TABLE IF NOT EXISTS instagram_posts (
