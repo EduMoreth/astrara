@@ -546,6 +546,23 @@ async def update_product_endpoint(product_id: str, data: ProductUpdateRequest, r
         except Exception:
             pass
 
+    # If price changed, create a new Stripe Price (Stripe prices are immutable)
+    if data.price_cents is not None and data.price_cents != product["price_cents"] and product["stripe_product_id"]:
+        try:
+            new_price = create_stripe_price(product["stripe_product_id"], data.price_cents)
+            cur2 = conn.cursor()
+            cur2.execute("UPDATE products SET stripe_price_id = %s WHERE id = %s",
+                         (new_price.id, product_id))
+            cur2.close()
+            # Deactivate the old Stripe Price
+            if product["stripe_price_id"]:
+                try:
+                    deactivate_stripe_price(product["stripe_price_id"])
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"Warning: Could not update Stripe price: {e}")
+
     conn.commit()
     cur.close()
     conn.close()
