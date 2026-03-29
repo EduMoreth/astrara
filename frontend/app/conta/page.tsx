@@ -55,10 +55,8 @@ export default function AccountPage() {
     })
     if (res.ok) {
       const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = 'astrara-meus-dados.json'; a.click()
-      URL.revokeObjectURL(url)
+      const { downloadFile } = await import('@/lib/download')
+      await downloadFile(blob, 'astrara-meus-dados.json')
       toast.success('Dados exportados!')
     } else toast.error('Erro ao exportar')
   }

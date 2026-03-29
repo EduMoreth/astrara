@@ -190,12 +190,8 @@ export default function ChartPage() {
         throw new Error(err.detail)
       }
       const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'astrara-interpretacao.pdf'
-      a.click()
-      URL.revokeObjectURL(url)
+      const { downloadFile } = await import('@/lib/download')
+      await downloadFile(blob, 'astrara-interpretacao.pdf')
       toast.success('PDF baixado com sucesso!')
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar PDF')
@@ -357,7 +353,7 @@ export default function ChartPage() {
 
                       {/* Download JPG only */}
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           const svgEl = document.querySelector('.chart-wheel-svg') as SVGSVGElement
                           if (!svgEl) { toast.error('Mandala nao encontrada'); return }
                           const canvas = document.createElement('canvas')
@@ -367,12 +363,11 @@ export default function ChartPage() {
                           ctx.fillStyle = '#0A0A0F'
                           ctx.fillRect(0, 0, 1200, 1200)
                           const img = new Image()
-                          img.onload = () => {
+                          img.onload = async () => {
                             ctx.drawImage(img, 0, 0, 1200, 1200)
-                            const a = document.createElement('a')
-                            a.href = canvas.toDataURL('image/jpeg', 0.95)
-                            a.download = 'astrara-mandala.jpg'
-                            a.click()
+                            const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+                            const { downloadDataUrl } = await import('@/lib/download')
+                            await downloadDataUrl(dataUrl, 'astrara-mandala.jpg')
                             toast.success('Mandala baixada!')
                           }
                           img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(svgEl))))
