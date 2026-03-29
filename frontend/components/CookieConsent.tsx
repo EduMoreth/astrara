@@ -7,12 +7,15 @@ export default function CookieConsent() {
   const [show, setShow] = useState(false)
 
   useEffect(() => {
-    const consent = localStorage.getItem('astrara_cookie_consent')
-    if (!consent) {
-      // Small delay so it doesn't flash on load
-      const t = setTimeout(() => setShow(true), 1000)
-      return () => clearTimeout(t)
-    }
+    // Don't show cookie consent in native apps (no cookies used)
+    import('@capacitor/core').then(({ Capacitor }) => {
+      if (Capacitor.isNativePlatform()) return
+      const consent = localStorage.getItem('astrara_cookie_consent')
+      if (!consent) {
+        const t = setTimeout(() => setShow(true), 1000)
+        return () => clearTimeout(t)
+      }
+    })
   }, [])
 
   function accept() {

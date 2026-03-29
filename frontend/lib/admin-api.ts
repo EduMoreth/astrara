@@ -32,7 +32,7 @@ async function adminRequest<T>(path: string, options: RequestInit = {}): Promise
   if (res.status === 401) {
     clearAdminToken()
     if (typeof window !== 'undefined') {
-      window.location.href = '/admin/login'
+      window.location.replace('/admin/login')
     }
     throw new Error('Sessao expirada')
   }

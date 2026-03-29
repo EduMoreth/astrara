@@ -156,7 +156,8 @@ export default function ChartPage() {
       }
       const data = await res.json()
       if (data.checkout_url) {
-        window.location.href = data.checkout_url
+        const { openExternalUrl } = await import('@/lib/navigation')
+        await openExternalUrl(data.checkout_url)
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao iniciar pagamento')
@@ -164,16 +165,17 @@ export default function ChartPage() {
   }
 
   async function handleDownloadPdf() {
-    // This is called after payment is confirmed
-    // For now we need a chart_id from the backend — use positions as fallback
     setDownloadingPdf(true)
+    toast.info('Gerando interpretacao com IA... Isso pode levar ate 1 minuto.')
     try {
       const token = localStorage.getItem('astrara_token')
       if (!token) {
         toast.error('Faca login para baixar o PDF')
         return
       }
-      // Use a special endpoint that generates PDF from positions directly
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 min timeout
+
       const res = await fetch(`${API_URL}/chart/interpretation/generate-pdf`, {
         method: 'POST',
         headers: {
@@ -184,7 +186,10 @@ export default function ChartPage() {
           positions: result?.positions,
           name: 'Meu Mapa Astral',
         }),
+        signal: controller.signal,
       })
+      clearTimeout(timeoutId)
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Erro ao gerar PDF' }))
         throw new Error(err.detail)
@@ -194,7 +199,11 @@ export default function ChartPage() {
       await downloadFile(blob, 'astrara-interpretacao.pdf')
       toast.success('PDF baixado com sucesso!')
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao gerar PDF')
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        toast.error('A geracao do PDF demorou demais. Tente novamente.')
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Erro ao gerar PDF')
+      }
     } finally {
       setDownloadingPdf(false)
     }
@@ -203,10 +212,17 @@ export default function ChartPage() {
   // Check if user just returned from payment
   const [paidRecently, setPaidRecently] = useState(false)
   useEffect(() => {
+    // Check for payment return — from URL params (web) or localStorage (mobile)
     const urlParams = new URLSearchParams(window.location.search)
-    const sessionId = urlParams.get('session_id')
+    let sessionId = urlParams.get('session_id')
+
+    // On mobile, the in-app browser stores the session_id in localStorage before closing
+    if (!sessionId) {
+      sessionId = localStorage.getItem('astrara_payment_session')
+      if (sessionId) localStorage.removeItem('astrara_payment_session')
+    }
+
     if (sessionId && isLoggedIn) {
-      // Verify payment
       const token = localStorage.getItem('astrara_token')
       fetch(`${API_URL}/checkout/verify/${sessionId}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -216,11 +232,38 @@ export default function ChartPage() {
           if (data.success) {
             setPaidRecently(true)
             toast.success('Pagamento confirmado! Clique em "Baixar interpretacao em PDF".')
-            // Clean URL
             window.history.replaceState({}, '', '/chart')
           }
         })
         .catch(() => {})
+    }
+
+    // On mobile, also listen for browser close event to re-check payment
+    if (typeof window !== 'undefined') {
+      import('@capacitor/core').then(({ Capacitor }) => {
+        if (Capacitor.isNativePlatform()) {
+          import('@capacitor/browser').then(({ Browser }) => {
+            Browser.addListener('browserFinished', () => {
+              const pendingSession = localStorage.getItem('astrara_payment_session')
+              if (pendingSession) {
+                localStorage.removeItem('astrara_payment_session')
+                const tk = localStorage.getItem('astrara_token')
+                fetch(`${API_URL}/checkout/verify/${pendingSession}`, {
+                  headers: tk ? { Authorization: `Bearer ${tk}` } : {},
+                })
+                  .then(r => r.json())
+                  .then(data => {
+                    if (data.success) {
+                      setPaidRecently(true)
+                      toast.success('Pagamento confirmado! Clique em "Baixar interpretacao em PDF".')
+                    }
+                  })
+                  .catch(() => {})
+              }
+            })
+          })
+        }
+      })
     }
   }, [isLoggedIn])
 

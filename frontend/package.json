@@ -26,7 +26,8 @@
     "@capacitor/splash-screen": "^7.0.1",
     "@capacitor/status-bar": "^7.0.1",
     "@capacitor/filesystem": "^7.0.1",
-    "@capacitor/share": "^7.0.1"
+    "@capacitor/share": "^7.0.1",
+    "@capacitor/browser": "^7.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { Capacitor } from '@capacitor/core'
 import StarBackground from '@/components/StarBackground'
 
 function CheckoutSuccessContent() {
@@ -12,18 +13,38 @@ function CheckoutSuccessContent() {
   useEffect(() => {
     if (!sessionId) return
 
-    // Verify payment first
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.up.railway.app'
     const token = localStorage.getItem('astrara_token')
 
+    // On native, this page loads inside the in-app browser (astrara.online).
+    // We verify payment via API and close the browser — the app underneath
+    // will detect the payment on next visit to /chart.
+    if (Capacitor.isNativePlatform()) {
+      fetch(`${API_URL}/checkout/verify/${sessionId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.json())
+        .then(async () => {
+          // Store session_id so the app can detect payment when browser closes
+          try { localStorage.setItem('astrara_payment_session', sessionId) } catch {}
+          // Close the in-app browser
+          const { Browser } = await import('@capacitor/browser')
+          await Browser.close()
+        })
+        .catch(async () => {
+          const { Browser } = await import('@capacitor/browser')
+          await Browser.close()
+        })
+      return
+    }
+
+    // Web flow: verify and redirect
     fetch(`${API_URL}/checkout/verify/${sessionId}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          // Redirect back to chart page with session_id so it knows payment was made
-          // The chart result is preserved in sessionStorage
           router.push(`/chart?session_id=${sessionId}`)
         }
       })

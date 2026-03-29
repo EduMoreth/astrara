@@ -35,9 +35,16 @@ export default function AccountPage() {
       .catch(() => router.push('/auth/login'))
 
     fetch(`${API_URL}/user/credits`, { headers: getHeaders() })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then(setCredits)
-      .catch(() => {})
+      .catch((err) => {
+        console.error('Credits fetch error:', err)
+        // Initialize with zeros if endpoint fails
+        setCredits({ credits_balance: 0, total_purchased: 0, total_used: 0 })
+      })
   }, [router])
 
   async function handleUpdateName() {
