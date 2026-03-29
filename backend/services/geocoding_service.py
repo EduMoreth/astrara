@@ -72,6 +72,10 @@ def search_cities(query: str, country: str | None = None, limit: int = 8) -> lis
 
     except GeocoderTimedOut:
         return []
+    except Exception:
+        # Catch rate-limit errors and other geocoding failures gracefully
+        if not all_results:
+            return []
 
     if not all_results:
         return []
@@ -96,8 +100,8 @@ def search_cities(query: str, country: str | None = None, limit: int = 8) -> lis
 
         city_name = (addr.get("city") or addr.get("town") or addr.get("village")
                      or addr.get("municipality") or addr.get("hamlet") or query)
-        state = addr.get("state", "")
-        country_name = addr.get("country", "")
+        state = addr.get("state") or ""
+        country_name = addr.get("country") or ""
 
         # Skip if this is clearly a country-level or state-level result
         if not city_name or city_name == country_name:

@@ -21,7 +21,8 @@ async def search_city(q: str = "", country: str = ""):
     try:
         results = search_cities(q, country if country else None, limit=5)
         return results
-    except Exception:
+    except Exception as e:
+        print(f"City search error: {e}")
         return []
 
 
