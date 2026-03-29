@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.up.railway.app'
@@ -14,14 +14,23 @@ function getAdminHeaders() {
 interface Message { id: string; sender_type: string; sender_name: string; message: string; created_at: string }
 
 export default function AdminTicketDetail() {
-  const params = useParams()
+  return (
+    <Suspense fallback={<div className="text-muted">Carregando...</div>}>
+      <AdminTicketDetailContent />
+    </Suspense>
+  )
+}
+
+function AdminTicketDetailContent() {
+  const searchParams = useSearchParams()
   const router = useRouter()
-  const ticketId = params.id as string
+  const ticketId = searchParams.get('id') || ''
   const [ticket, setTicket] = useState<Record<string, unknown> | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [reply, setReply] = useState('')
 
   useEffect(() => {
+    if (!ticketId) return
     fetch(`${API_URL}/admin/api/tickets/${ticketId}`, { headers: getAdminHeaders() })
       .then(r => r.json())
       .then(data => { setTicket(data.ticket); setMessages(data.messages) })
@@ -36,7 +45,6 @@ export default function AdminTicketDetail() {
     if (res.ok) {
       toast.success('Resposta enviada + email enviado ao usuario')
       setReply('')
-      // Reload
       const data = await (await fetch(`${API_URL}/admin/api/tickets/${ticketId}`, { headers: getAdminHeaders() })).json()
       setMessages(data.messages)
     } else { toast.error('Erro') }
@@ -50,6 +58,7 @@ export default function AdminTicketDetail() {
     setTicket(prev => prev ? { ...prev, status } : prev)
   }
 
+  if (!ticketId) return <div className="text-muted">ID do ticket nao informado.</div>
   if (!ticket) return <div className="text-muted">Carregando...</div>
 
   return (

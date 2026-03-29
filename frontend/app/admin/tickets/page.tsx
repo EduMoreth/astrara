@@ -65,7 +65,7 @@ export default function AdminTicketsPage() {
                 <td className="px-4 py-3 text-stardust text-sm">{t.message_count}</td>
                 <td className="px-4 py-3 text-muted text-xs">{new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
                 <td className="px-4 py-3">
-                  <Link href={`/admin/tickets/${t.id}`} className="text-gold text-xs hover:underline">Abrir</Link>
+                  <Link href={`/admin/tickets/detail?id=${t.id}`} className="text-gold text-xs hover:underline">Abrir</Link>
                 </td>
               </tr>
             ))}

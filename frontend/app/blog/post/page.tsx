@@ -1,26 +1,35 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import StarBackground from '@/components/StarBackground'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.up.railway.app'
 
 export default function BlogPostPage() {
-  const params = useParams()
-  const slug = params.slug as string
+  return (
+    <Suspense fallback={<main className="relative min-h-screen flex items-center justify-center"><StarBackground /><div className="text-muted relative z-10">Carregando...</div></main>}>
+      <BlogPostContent />
+    </Suspense>
+  )
+}
+
+function BlogPostContent() {
+  const searchParams = useSearchParams()
+  const slug = searchParams.get('slug') || ''
   const [post, setPost] = useState<Record<string, unknown> | null>(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    if (!slug) return
     fetch(`${API_URL}/blog/posts/${slug}`)
       .then(r => { if (!r.ok) throw new Error(); return r.json() })
       .then(setPost)
       .catch(() => setError(true))
   }, [slug])
 
-  if (error) return (
+  if (!slug || error) return (
     <main className="relative min-h-screen flex items-center justify-center">
       <StarBackground />
       <div className="glass-card p-12 text-center relative z-10">
@@ -50,9 +59,9 @@ export default function BlogPostPage() {
       </nav>
 
       <article className="relative z-10 px-4 sm:px-6 max-w-3xl mx-auto py-8 sm:py-12">
-        {post.category && (
-          <span className="text-xs text-gold bg-gold/10 px-2 py-0.5 rounded-full">{post.category as string}</span>
-        )}
+        {post.category ? (
+          <span className="text-xs text-gold bg-gold/10 px-2 py-0.5 rounded-full">{String(post.category)}</span>
+        ) : null}
         <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl text-stardust mt-4 mb-4 leading-tight">
           {post.title as string}
         </h1>

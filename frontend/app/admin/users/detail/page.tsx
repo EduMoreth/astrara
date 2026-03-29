@@ -1,14 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { getUser, updateUser, manageCredits, deleteUser, banUser } from '@/lib/admin-api'
 
 export default function AdminUserDetail() {
-  const params = useParams()
+  return (
+    <Suspense fallback={<div className="text-muted">Carregando...</div>}>
+      <AdminUserDetailContent />
+    </Suspense>
+  )
+}
+
+function AdminUserDetailContent() {
+  const searchParams = useSearchParams()
   const router = useRouter()
-  const userId = params.id as string
+  const userId = searchParams.get('id') || ''
   const [data, setData] = useState<Record<string, unknown> | null>(null)
   const [editName, setEditName] = useState('')
   const [editPlan, setEditPlan] = useState('')
@@ -19,6 +27,7 @@ export default function AdminUserDetail() {
   const [tab, setTab] = useState('dados')
 
   useEffect(() => {
+    if (!userId) return
     getUser(userId).then((res) => {
       setData(res)
       const user = res.user as Record<string, string>
@@ -27,6 +36,7 @@ export default function AdminUserDetail() {
     }).catch(() => toast.error('Erro ao carregar usuario'))
   }, [userId])
 
+  if (!userId) return <div className="text-muted">ID do usuario nao informado.</div>
   if (!data) return <div className="text-muted">Carregando...</div>
 
   const user = data.user as Record<string, string>

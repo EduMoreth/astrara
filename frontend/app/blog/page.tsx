@@ -48,7 +48,7 @@ export default function BlogPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {posts.map(post => (
-              <Link key={post.id} href={`/blog/${post.slug}`} className="glass-card p-5 sm:p-6 hover:border-gold/30 transition-all group">
+              <Link key={post.id} href={`/blog/post?slug=${post.slug}`} className="glass-card p-5 sm:p-6 hover:border-gold/30 transition-all group">
                 {post.category && (
                   <span className="text-xs text-gold bg-gold/10 px-2 py-0.5 rounded-full">{post.category}</span>
                 )}

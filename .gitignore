@@ -25,3 +25,7 @@ Thumbs.db
 *.egg-info/
 dist/
 build/
+
+# Capacitor native projects (generated locally)
+frontend/android/
+frontend/ios/

@@ -80,7 +80,7 @@ export default function AdminUsersPage() {
               <span className="text-muted">{u.chart_count} mapas</span>
             </div>
             <div className="flex gap-3 pt-1">
-              <Link href={`/admin/users/${u.id}`} className="text-gold text-xs">Ver detalhes</Link>
+              <Link href={`/admin/users/detail?id=${u.id}`} className="text-gold text-xs">Ver detalhes</Link>
               {u.status !== 'banned' && (
                 <button onClick={() => handleBan(u.id)} className="text-[#F39C12] text-xs">Banir</button>
               )}
@@ -117,7 +117,7 @@ export default function AdminUsersPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <Link href={`/admin/users/${u.id}`} className="text-gold hover:text-gold/80 text-xs">Ver</Link>
+                    <Link href={`/admin/users/detail?id=${u.id}`} className="text-gold hover:text-gold/80 text-xs">Ver</Link>
                     {u.status !== 'banned' && (
                       <button onClick={() => handleBan(u.id)} className="text-[#F39C12] hover:text-[#F39C12]/80 text-xs">Banir</button>
                     )}
