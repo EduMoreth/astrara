@@ -20,7 +20,8 @@ ALLOWED_ORIGINS = [
     "https://astrara.online",
     "https://www.astrara.online",
     "http://localhost:3000",  # dev
-    "http://localhost",  # Capacitor Android
+    "http://localhost",  # Capacitor Android (http scheme)
+    "https://localhost",  # Capacitor Android (https scheme)
     "capacitor://localhost",  # Capacitor iOS
 ]
 
