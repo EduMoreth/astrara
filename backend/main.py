@@ -20,6 +20,8 @@ ALLOWED_ORIGINS = [
     "https://astrara.online",
     "https://www.astrara.online",
     "http://localhost:3000",  # dev
+    "http://localhost",  # Capacitor Android
+    "capacitor://localhost",  # Capacitor iOS
 ]
 
 app.add_middleware(
