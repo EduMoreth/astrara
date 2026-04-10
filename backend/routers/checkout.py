@@ -130,7 +130,8 @@ async def create_checkout(data: CheckoutCreateRequest,
             customer_email=user.get("email"),
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao criar checkout: {str(e)}")
+        print(f"Checkout creation error: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao criar checkout. Tente novamente.")
 
     # Record pending purchase
     try:
@@ -191,16 +192,11 @@ async def stripe_webhook(request: Request):
             print(f"Webhook error: {e}")
             raise HTTPException(status_code=400, detail=str(e))
     else:
-        # No webhook secret configured — parse the event directly
-        # (acceptable in development, but STRIPE_WEBHOOK_SECRET should be set in production)
-        import json
-        try:
-            event = stripe.Event.construct_from(
-                json.loads(payload), stripe.api_key
-            )
-        except Exception as e:
-            print(f"Webhook parse error: {e}")
-            raise HTTPException(status_code=400, detail=str(e))
+        print("CRITICAL: STRIPE_WEBHOOK_SECRET not configured — rejecting webhook")
+        raise HTTPException(
+            status_code=500,
+            detail="Webhook secret not configured. Set STRIPE_WEBHOOK_SECRET."
+        )
 
     # Handle checkout.session.completed
     if event["type"] == "checkout.session.completed":

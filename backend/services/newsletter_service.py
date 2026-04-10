@@ -103,7 +103,7 @@ def send_weekly_newsletter():
         <div style="text-align:center;margin-top:30px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.05);">
             <p style="color:#8B8A9B;font-size:11px;">
                 Voce recebeu este email por ser assinante da newsletter Astrara.<br>
-                <a href="https://www.astrara.online/unsubscribe?email={{{{email}}}}" style="color:#8B8A9B;">Cancelar inscricao</a>
+                <a href="https://www.astrara.online/unsubscribe?email={{{{email}}}}&token={{{{unsub_token}}}}" style="color:#8B8A9B;">Cancelar inscricao</a>
             </p>
         </div>
     </div>
@@ -118,10 +118,14 @@ def send_weekly_newsletter():
     conn.commit()
 
     # Send to all subscribers
+    import hmac, hashlib
+    secret_key = os.getenv("SECRET_KEY", "")
+
     sent_count = 0
     for sub in subscribers:
         try:
-            personalized_html = html_content.replace("{{email}}", sub["email"])
+            unsub_token = hmac.new(secret_key.encode(), sub["email"].encode(), hashlib.sha256).hexdigest()
+            personalized_html = html_content.replace("{{email}}", sub["email"]).replace("{{unsub_token}}", unsub_token)
             send_email(
                 to_email=sub["email"],
                 subject=newsletter["subject"],

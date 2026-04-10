@@ -1,19 +1,24 @@
 import os
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from jose import jwt
 from pydantic import BaseModel
 import bcrypt
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from models.user import UserRegister, UserLogin
 from database import get_connection
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
-    import warnings
-    warnings.warn("SECRET_KEY not set! Using insecure default. Set SECRET_KEY in environment.")
-    SECRET_KEY = "INSECURE-DEFAULT-CHANGE-ME-" + str(os.getpid())
+    raise RuntimeError(
+        "SECRET_KEY environment variable is required. "
+        "Set it to a strong random string before starting the server."
+    )
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 72
 
@@ -48,7 +53,8 @@ def verify_token(token: str) -> dict:
 
 
 @router.post("/register")
-async def register(data: UserRegister):
+@limiter.limit("5/minute")
+async def register(request: Request, data: UserRegister):
     conn = get_connection()
     cur = conn.cursor()
 
@@ -82,7 +88,8 @@ async def register(data: UserRegister):
 
 
 @router.post("/login")
-async def login(data: UserLogin):
+@limiter.limit("10/minute")
+async def login(request: Request, data: UserLogin):
     conn = get_connection()
     cur = conn.cursor()
 
@@ -121,7 +128,8 @@ class ResetPasswordRequest(BaseModel):
 
 
 @router.post("/forgot-password")
-async def forgot_password(data: ForgotPasswordRequest):
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, data: ForgotPasswordRequest):
     import secrets as sec
     conn = get_connection()
     cur = conn.cursor()

@@ -1,35 +1,50 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from database import init_db, get_connection
 from routers import auth, chart, user, admin, checkout, support, blog
 
 load_dotenv()
 
+ENV = os.getenv("ENV", "production").lower()
+IS_DEV = ENV in ("development", "dev", "local")
+
 app = FastAPI(
     title="Astrara API",
     description="API para geracao de mapas astrais",
     version="1.0.0",
+    docs_url="/docs" if IS_DEV else None,
+    redoc_url="/redoc" if IS_DEV else None,
 )
+
+# Rate limiting
+app.state.limiter = auth.limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://www.astrara.online")
 ALLOWED_ORIGINS = [
     FRONTEND_URL,
     "https://astrara.online",
     "https://www.astrara.online",
-    "http://localhost:3000",  # dev
-    "http://localhost",  # Capacitor Android (http scheme)
-    "https://localhost",  # Capacitor Android (https scheme)
     "capacitor://localhost",  # Capacitor iOS
     "capacitor://app",  # Capacitor Android (capacitor scheme)
 ]
 
+if IS_DEV:
+    ALLOWED_ORIGINS += [
+        "http://localhost:3000",
+        "http://localhost",
+        "https://localhost",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"^capacitor://.*$",
+    allow_origin_regex=r"^capacitor://(localhost|app)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -178,17 +193,25 @@ async def startup():
         print(f"Warning: Could not check/recover missed post: {e}")
 
 
+def _verify_cron_auth(request) -> None:
+    """Verify cron endpoint authorization via Authorization header."""
+    from fastapi import HTTPException
+    import secrets as sec
+    auth_header = request.headers.get("Authorization", "")
+    expected = os.getenv("ADMIN_JWT_SECRET", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+    if not expected or not token or not sec.compare_digest(token, expected):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 @app.get("/cron/instagram-daily")
-async def cron_instagram_daily(secret: str = ""):
+async def cron_instagram_daily(request: Request):
     """
     External cron endpoint to trigger daily Instagram post.
-    Protected by ADMIN_JWT_SECRET as query param.
-    Call: GET /cron/instagram-daily?secret=YOUR_ADMIN_JWT_SECRET
+    Protected by ADMIN_JWT_SECRET via Authorization header.
+    Call: GET /cron/instagram-daily with header Authorization: Bearer YOUR_ADMIN_JWT_SECRET
     """
-    expected = os.getenv("ADMIN_JWT_SECRET", "")
-    if not expected or secret != expected:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Forbidden")
+    _verify_cron_auth(request)
 
     from datetime import date
     from services.daily_post_orchestrator import run_daily_all_platforms
@@ -196,16 +219,14 @@ async def cron_instagram_daily(secret: str = ""):
         result = run_daily_all_platforms(date.today())
         return {"success": True, **result}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"Cron instagram-daily error: {e}")
+        return {"success": False, "error": "Erro interno ao processar post."}
 
 
 @app.get("/cron/twitter-daily")
-async def cron_twitter_daily(secret: str = "", force: bool = False):
+async def cron_twitter_daily(request: Request, force: bool = False):
     """External cron to trigger daily tweet."""
-    expected = os.getenv("ADMIN_JWT_SECRET", "")
-    if not expected or secret != expected:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Forbidden")
+    _verify_cron_auth(request)
     from datetime import date
     # If force, delete existing record first
     if force:
@@ -223,45 +244,48 @@ async def cron_twitter_daily(secret: str = "", force: bool = False):
         run_daily_tweet(date.today())
         return {"success": True, "date": str(date.today())}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"Cron twitter-daily error: {e}")
+        return {"success": False, "error": "Erro interno ao processar tweet."}
 
 
 @app.get("/cron/newsletter-weekly")
-async def cron_newsletter_weekly(secret: str = ""):
+async def cron_newsletter_weekly(request: Request):
     """External cron to trigger weekly newsletter (Mondays)."""
-    expected = os.getenv("ADMIN_JWT_SECRET", "")
-    if not expected or secret != expected:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Forbidden")
+    _verify_cron_auth(request)
     from services.newsletter_service import send_weekly_newsletter
     try:
         result = send_weekly_newsletter()
         return {"success": True, **result}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"Cron newsletter-weekly error: {e}")
+        return {"success": False, "error": "Erro interno ao enviar newsletter."}
 
 
 @app.get("/cron/blog-weekly")
-async def cron_blog_weekly(secret: str = ""):
+async def cron_blog_weekly(request: Request):
     """External cron to generate and publish a blog post."""
-    expected = os.getenv("ADMIN_JWT_SECRET", "")
-    if not expected or secret != expected:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Forbidden")
+    _verify_cron_auth(request)
     from services.blog_service import generate_and_publish_blog_post
     try:
         result = generate_and_publish_blog_post()
         return {"success": True, "title": result["title"], "slug": result["slug"]}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"Cron blog-weekly error: {e}")
+        return {"success": False, "error": "Erro interno ao gerar post."}
 
 
 @app.get("/unsubscribe")
-async def unsubscribe(email: str = ""):
-    """Unsubscribe from newsletter."""
-    if email:
-        from services.newsletter_service import unsubscribe_user
-        unsubscribe_user(email)
+async def unsubscribe(email: str = "", token: str = ""):
+    """Unsubscribe from newsletter. Requires a valid HMAC token."""
+    if not email or not token:
+        return {"message": "Link de cancelamento invalido."}
+    import hmac, hashlib
+    secret = os.getenv("SECRET_KEY", "")
+    expected = hmac.new(secret.encode(), email.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(token, expected):
+        return {"message": "Link de cancelamento invalido ou expirado."}
+    from services.newsletter_service import unsubscribe_user
+    unsubscribe_user(email)
     return {"message": "Voce foi removido da newsletter com sucesso."}
 
 
@@ -273,44 +297,3 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
-
-
-@app.get("/debug/fonts")
-async def debug_fonts():
-    """Temporary endpoint to debug font loading on server."""
-    import os
-    from PIL import ImageFont
-
-    results = {}
-    font_dirs = ["/app/fonts", "/app/backend/fonts"]
-
-    for d in font_dirs:
-        results[d] = {
-            "exists": os.path.isdir(d),
-            "files": os.listdir(d) if os.path.isdir(d) else [],
-        }
-
-    # Try loading
-    test_fonts = {}
-    for d in font_dirs:
-        if not os.path.isdir(d):
-            continue
-        for f in os.listdir(d):
-            if f.endswith(".ttf"):
-                path = os.path.join(d, f)
-                try:
-                    font = ImageFont.truetype(path, 40)
-                    test_fonts[f] = {"status": "OK", "path": path, "size": os.path.getsize(path)}
-                except Exception as e:
-                    test_fonts[f] = {"status": "FAILED", "path": path, "error": str(e)}
-
-    # Check CWD
-    cwd = os.getcwd()
-    cwd_files = os.listdir(cwd) if os.path.isdir(cwd) else []
-
-    return {
-        "cwd": cwd,
-        "cwd_contents": cwd_files[:20],
-        "font_dirs": results,
-        "font_loading": test_fonts,
-    }

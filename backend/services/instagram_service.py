@@ -17,7 +17,7 @@ def _upload_image_to_imgur(image_path: str) -> str:
 
     response = requests.post(
         "https://api.imgur.com/3/image",
-        headers={"Authorization": "Client-ID 546c25a59c58ad7"},  # Anonymous Imgur client
+        headers={"Authorization": f"Client-ID {os.getenv('IMGUR_CLIENT_ID', '')}"},
         data={"image": image_data, "type": "base64"},
         timeout=60,
     )

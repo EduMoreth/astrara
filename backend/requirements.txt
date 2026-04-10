@@ -7,7 +7,7 @@ opencage
 psycopg2-binary
 python-jose[cryptography]
 passlib[bcrypt]
-pydantic
+pydantic[email]
 python-dotenv
 httpx
 timezonefinder
@@ -19,3 +19,4 @@ resend
 apscheduler
 Pillow
 tweepy
+slowapi

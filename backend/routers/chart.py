@@ -57,9 +57,10 @@ async def generate(data: ChartRequest, request: Request = None, authorization: O
             coords["tz_str"],
         )
     except Exception as e:
+        print(f"Chart calculation error: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao calcular o mapa astral: {str(e)}",
+            detail="Erro ao calcular o mapa astral. Tente novamente.",
         )
 
     # Log chart generation (tracks ALL generations for admin metrics)
@@ -185,14 +186,21 @@ async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = H
         conn.close()
         raise HTTPException(status_code=402, detail="Creditos insuficientes. Adquira creditos para desbloquear a interpretacao.")
 
-    # Deduct credit if using credits
+    # Deduct credit atomically
     if has_credits:
         cur.execute("""
             UPDATE user_credits SET credits_balance = credits_balance - 1,
                                     total_used = total_used + 1,
                                     updated_at = NOW()
-            WHERE user_id = %s
+            WHERE user_id = %s AND credits_balance > 0
+            RETURNING credits_balance
         """, (user_id,))
+        updated = cur.fetchone()
+        if not updated:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            raise HTTPException(status_code=402, detail="Creditos insuficientes.")
         cur.execute("""
             INSERT INTO credit_transactions (user_id, type, amount, description)
             VALUES (%s, 'use', -1, 'Interpretacao do mapa astral')
@@ -333,7 +341,7 @@ async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Op
             detail="Voce precisa comprar a interpretacao antes de baixar o PDF."
         )
 
-    # Consume 1 credit if user has credits
+    # Consume 1 credit atomically
     if has_credits:
         cur.execute("""
             UPDATE user_credits
@@ -341,7 +349,14 @@ async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Op
                 total_used = total_used + 1,
                 updated_at = NOW()
             WHERE user_id = %s AND credits_balance > 0
+            RETURNING credits_balance
         """, (user_id,))
+        updated = cur.fetchone()
+        if not updated:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            raise HTTPException(status_code=402, detail="Creditos insuficientes.")
 
         cur.execute("""
             INSERT INTO credit_transactions (user_id, type, amount, description)

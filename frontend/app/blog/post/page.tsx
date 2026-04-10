@@ -1,9 +1,42 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import StarBackground from '@/components/StarBackground'
+
+function sanitizeHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const ALLOWED_TAGS = new Set(['h1','h2','h3','h4','p','strong','em','a','ul','ol','li','blockquote','br','span','div'])
+  const ALLOWED_ATTRS: Record<string, Set<string>> = { a: new Set(['href']), span: new Set(['style']), div: new Set(['style']) }
+
+  function clean(node: Node): void {
+    const children = Array.from(node.childNodes)
+    for (const child of children) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const el = child as Element
+        const tag = el.tagName.toLowerCase()
+        if (!ALLOWED_TAGS.has(tag)) {
+          el.replaceWith(...Array.from(el.childNodes))
+          continue
+        }
+        const allowed = ALLOWED_ATTRS[tag] || new Set()
+        for (const attr of Array.from(el.attributes)) {
+          if (!allowed.has(attr.name)) el.removeAttribute(attr.name)
+        }
+        if (tag === 'a') {
+          const href = el.getAttribute('href') || ''
+          if (!href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('/')) {
+            el.removeAttribute('href')
+          }
+        }
+        clean(el)
+      }
+    }
+  }
+  clean(doc.body)
+  return doc.body.innerHTML
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.up.railway.app'
 
@@ -82,14 +115,16 @@ function BlogPostContent() {
             [&_li]:mb-2
             [&_blockquote]:border-l-2 [&_blockquote]:border-gold/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted"
           dangerouslySetInnerHTML={{
-            __html: (post.content as string)
-              .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-              .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-              .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-              .replace(/\*(.*?)\*/g, '<em>$1</em>')
-              .replace(/\n\n/g, '</p><p>')
-              .replace(/^(?!<[hpuo])/gm, '<p>')
+            __html: sanitizeHtml(
+              (post.content as string)
+                .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+                .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+                .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/^(?!<[hpuo])/gm, '<p>')
+            )
           }}
         />
 

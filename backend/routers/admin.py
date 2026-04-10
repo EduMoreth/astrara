@@ -28,9 +28,9 @@ security = HTTPBasic()
 
 ADMIN_JWT_SECRET = os.getenv("ADMIN_JWT_SECRET") or os.getenv("SECRET_KEY")
 if not ADMIN_JWT_SECRET:
-    import warnings
-    warnings.warn("ADMIN_JWT_SECRET not set! Using insecure default.")
-    ADMIN_JWT_SECRET = "INSECURE-ADMIN-DEFAULT-" + str(os.getpid())
+    raise RuntimeError(
+        "ADMIN_JWT_SECRET (or SECRET_KEY) environment variable is required."
+    )
 ADMIN_JWT_ALGORITHM = "HS256"
 ADMIN_TOKEN_HOURS = 8
 
@@ -482,7 +482,8 @@ async def create_product(data: ProductCreateRequest, request: Request,
 
             stripe_price_id = price.id
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Erro Stripe: {str(e)}")
+            print(f"Stripe product error: {e}")
+            raise HTTPException(status_code=500, detail="Erro ao processar operacao no Stripe.")
 
     conn = get_connection()
     cur = conn.cursor()
@@ -888,7 +889,8 @@ async def refund_transaction(purchase_id: str, data: RefundRequest, request: Req
         except Exception as e:
             cur.close()
             conn.close()
-            raise HTTPException(status_code=500, detail=f"Erro ao estornar no Stripe: {str(e)}")
+            print(f"Stripe refund error: {e}")
+            raise HTTPException(status_code=500, detail="Erro ao processar estorno no Stripe.")
 
     # Update purchase status
     cur.execute("UPDATE purchases SET status = 'refunded' WHERE id = %s", (purchase_id,))

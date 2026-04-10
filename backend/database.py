@@ -10,7 +10,11 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_connection():
     """Get a new database connection."""
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    conn_str = DATABASE_URL
+    if conn_str and "sslmode" not in conn_str:
+        sep = "&" if "?" in conn_str else "?"
+        conn_str = conn_str + sep + "sslmode=require"
+    return psycopg2.connect(conn_str, cursor_factory=RealDictCursor)
 
 
 def init_db():
