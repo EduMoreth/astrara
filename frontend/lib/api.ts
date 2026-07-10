@@ -35,6 +35,8 @@ interface UserChart {
   birth_time: string
   birth_city: string
   positions_json: Record<string, { sign: string; deg: number }>
+  houses_json?: Array<{ sign: string; deg: number }>
+  aspects_json?: Array<{ p1: string; p2: string; aspect: string; orbit: number }>
   svg_data: string
   created_at: string
 }

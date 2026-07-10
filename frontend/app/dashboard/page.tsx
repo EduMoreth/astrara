@@ -18,6 +18,8 @@ interface Chart {
   birth_time: string
   birth_city: string
   positions_json: Record<string, { sign: string; deg: number }>
+  houses_json?: Array<{ sign: string; deg: number }>
+  aspects_json?: Array<{ p1: string; p2: string; aspect: string; orbit: number }>
   svg_data: string
   created_at: string
 }
@@ -216,8 +218,8 @@ export default function DashboardPage() {
                         // Store the cached chart result directly — no need to recalculate
                         sessionStorage.setItem('astrara_chart_result', JSON.stringify({
                           positions: chart.positions_json || {},
-                          houses: [],
-                          aspects: [],
+                          houses: Array.isArray(chart.houses_json) ? chart.houses_json : [],
+                          aspects: Array.isArray(chart.aspects_json) ? chart.aspects_json : [],
                           svg: chart.svg_data || '',
                         }))
                         // Do NOT set astrara_auto_generate — use cached data

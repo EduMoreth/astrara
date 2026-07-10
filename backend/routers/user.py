@@ -46,7 +46,7 @@ async def get_charts(user: dict = Depends(get_current_user)):
     cur = conn.cursor()
     cur.execute(
         """SELECT id, name, birth_date, birth_time, birth_city,
-                  positions_json, svg_data, created_at
+                  positions_json, houses_json, aspects_json, svg_data, created_at
            FROM charts WHERE user_id = %s ORDER BY created_at DESC""",
         (user["sub"],),
     )
@@ -62,6 +62,8 @@ async def get_charts(user: dict = Depends(get_current_user)):
             "birth_time": str(r["birth_time"]),
             "birth_city": r["birth_city"],
             "positions_json": r["positions_json"],
+            "houses_json": r.get("houses_json") or [],
+            "aspects_json": r.get("aspects_json") or [],
             "svg_data": r["svg_data"],
             "created_at": str(r["created_at"]),
         }
@@ -79,6 +81,8 @@ class SaveChartRequest(BaseModel):
     lng: Optional[float] = None
     tz_str: Optional[str] = None
     positions_json: dict = {}
+    houses_json: list = []
+    aspects_json: list = []
     svg_data: str = ""
 
 
@@ -123,8 +127,8 @@ async def save_chart(
     cur.execute(
         """INSERT INTO charts
            (user_id, name, birth_date, birth_time, birth_city, birth_country,
-            lat, lng, tz_str, positions_json, svg_data)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            lat, lng, tz_str, positions_json, houses_json, aspects_json, svg_data)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id""",
         (
             user["sub"],
@@ -137,6 +141,8 @@ async def save_chart(
             data.lng,
             data.tz_str,
             json.dumps(data.positions_json or {}),
+            json.dumps(data.houses_json or []),
+            json.dumps(data.aspects_json or []),
             data.svg_data,
         ),
     )
