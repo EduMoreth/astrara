@@ -62,7 +62,16 @@ async function request<T>(
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'Erro desconhecido' }))
-    throw new Error(error.detail || `Erro ${res.status}`)
+    // FastAPI validation errors (422) send detail as an ARRAY of objects —
+    // stringify sensibly instead of showing "[object Object]" to the user
+    const detail = error?.detail
+    const message =
+      typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail) && detail[0]?.msg
+          ? detail[0].msg
+          : `Erro ${res.status}`
+    throw new Error(message)
   }
 
   return res.json()
@@ -98,35 +107,6 @@ export async function login(
 
 export async function getUserCharts(): Promise<UserChart[]> {
   return request<UserChart[]>('/user/charts')
-}
-
-export async function saveChart(chartId: string): Promise<void> {
-  return request('/user/charts/save', {
-    method: 'POST',
-    body: JSON.stringify({ chart_id: chartId }),
-  })
-}
-
-export interface Product {
-  name: string
-  description: string
-  price: number
-  currency: string
-}
-
-export async function getProducts(): Promise<Record<string, Product>> {
-  return request<Record<string, Product>>('/payments/products')
-}
-
-export async function createCheckout(productType: string, chartId?: string): Promise<{ checkout_url: string; session_id: string }> {
-  return request('/checkout/create', {
-    method: 'POST',
-    body: JSON.stringify({ product_id: productType, chart_id: chartId }),
-  })
-}
-
-export async function checkPayment(sessionId: string): Promise<{ paid: boolean; product_type: string }> {
-  return request(`/checkout/verify/${sessionId}`)
 }
 
 export async function getAvailableProducts() {

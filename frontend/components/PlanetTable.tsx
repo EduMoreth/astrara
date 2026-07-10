@@ -48,6 +48,9 @@ function formatDegree(deg: number): string {
 }
 
 export default function PlanetTable({ positions }: Props) {
+  // Defensive: cached charts may hold a malformed positions value — never crash
+  const pos: Record<string, Position> =
+    positions && typeof positions === 'object' && !Array.isArray(positions) ? positions : {}
   const planetKeys = Object.keys(PLANET_MAP)
 
   return (
@@ -77,10 +80,10 @@ export default function PlanetTable({ positions }: Props) {
           </thead>
           <tbody>
             {planetKeys.map((key, i) => {
-              const pos = positions[key]
-              if (!pos) return null
+              const planetPos = pos[key]
+              if (!planetPos) return null
               const planet = PLANET_MAP[key]
-              const signPt = SIGN_TRANSLATIONS[pos.sign] || pos.sign
+              const signPt = SIGN_TRANSLATIONS[planetPos.sign] || planetPos.sign
 
               return (
                 <motion.tr
@@ -100,7 +103,7 @@ export default function PlanetTable({ positions }: Props) {
                     {signPt}
                   </td>
                   <td className="px-3 sm:px-5 py-3 text-right text-muted text-xs sm:text-sm font-mono">
-                    {formatDegree(pos.deg)}
+                    {formatDegree(planetPos.deg)}
                   </td>
                 </motion.tr>
               )

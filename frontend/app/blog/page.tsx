@@ -23,8 +23,12 @@ export default function BlogPage() {
 
   useEffect(() => {
     fetch(`${API_URL}/blog/posts?page=${page}&limit=12`)
-      .then(r => r.json())
-      .then(data => { setPosts(data.posts); setPages(data.pages) })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!data) return
+        setPosts(Array.isArray(data.posts) ? data.posts : [])
+        setPages(typeof data.pages === 'number' ? data.pages : 1)
+      })
       .catch(() => {})
   }, [page])
 

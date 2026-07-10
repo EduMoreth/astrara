@@ -117,9 +117,11 @@ function spreadPlanets(items: { key: string; deg: number }[], minGap: number) {
 }
 
 export default function ChartWheel({ positions, houses, aspects, birthName, birthDate, birthTime, birthCity }: Props) {
-  // Defensive: cached/saved charts may persist houses/aspects in a malformed shape
-  // (e.g. an empty object instead of an array). Normalize so a bad shape can never
-  // throw `.map is not a function` and crash the whole page.
+  // Defensive: cached/saved charts may persist positions/houses/aspects in a
+  // malformed shape (e.g. null, or an empty object instead of an array).
+  // Normalize so a bad shape can never crash the whole page.
+  const pos: Record<string, Position> =
+    positions && typeof positions === 'object' && !Array.isArray(positions) ? positions : {}
   const houseList = Array.isArray(houses) ? houses : []
   const aspectList = Array.isArray(aspects) ? aspects : []
 
@@ -134,8 +136,8 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
   const centerR = 55
 
   // Ascendant offset so AC is on the left (180 deg)
-  const ascDeg = positions.ascendant
-    ? toAbsoluteDeg(positions.ascendant.sign, positions.ascendant.deg)
+  const ascDeg = pos.ascendant
+    ? toAbsoluteDeg(pos.ascendant.sign, pos.ascendant.deg)
     : 0
   const offset = 180 - ascDeg
 
@@ -146,9 +148,9 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
   // Prepare planets with spread
   const planetEntries = Object.entries(PLANET_SYMBOLS)
     .map(([key, symbol]) => {
-      const pos = positions[key]
-      if (!pos) return null
-      return { key, symbol, deg: adj(pos.sign, pos.deg), realDeg: adj(pos.sign, pos.deg) }
+      const planetPos = pos[key]
+      if (!planetPos) return null
+      return { key, symbol, deg: adj(planetPos.sign, planetPos.deg), realDeg: adj(planetPos.sign, planetPos.deg) }
     })
     .filter(Boolean) as { key: string; symbol: string; deg: number; realDeg: number }[]
 
@@ -314,7 +316,7 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
         })}
 
         {/* AC label */}
-        {positions.ascendant && (
+        {pos.ascendant && (
           <text
             x={cx - outerR - 15} y={cy + 4}
             textAnchor="end" fill="#C9A96E" fontSize="12" fontWeight="700"
@@ -325,8 +327,8 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
         )}
 
         {/* MC-IC axis line */}
-        {positions.midheaven && (() => {
-          const mcDeg = adj(positions.midheaven.sign, positions.midheaven.deg)
+        {pos.midheaven && (() => {
+          const mcDeg = adj(pos.midheaven.sign, pos.midheaven.deg)
           const icDeg = (mcDeg + 180) % 360
           const mc1 = polarToXY(cx, cy, centerR, mcDeg)
           const mc2 = polarToXY(cx, cy, innerR, mcDeg)

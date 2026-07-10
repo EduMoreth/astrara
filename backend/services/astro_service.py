@@ -97,9 +97,6 @@ def generate_chart(
     )
 
     # Debug logging for Kerykeion output
-    print(f"[ASTRO] {name} | {year}-{month}-{day} {hour}:{minute} | lat={lat} lng={lng} tz={tz_str}")
-    print(f"[ASTRO] Moon raw: sign={subject.moon.sign} pos={subject.moon.position} abs_pos={getattr(subject.moon, 'abs_pos', 'N/A')}")
-    print(f"[ASTRO] Sun raw: sign={subject.sun.sign} pos={subject.sun.position}")
 
     positions = {
         "sun": {"sign": subject.sun.sign, "deg": round(subject.sun.position, 2)},

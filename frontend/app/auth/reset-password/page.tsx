@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -11,15 +11,32 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://astrara-production.u
 function ResetPasswordForm() {
   const params = useSearchParams()
   const token = params.get('token') || ''
+  const forced = params.get('forced') === 'true'
+  const forcedEmail = params.get('email') || ''
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [done, setDone] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [forcedEmailSent, setForcedEmailSent] = useState(false)
+
+  // Forced-reset flow (admin flagged the account): there is no token yet, so
+  // automatically request a reset link for the email and tell the user.
+  useEffect(() => {
+    if (!token && forced && forcedEmail && !forcedEmailSent) {
+      fetch(`${API_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forcedEmail }),
+      })
+        .catch(() => {})
+        .finally(() => setForcedEmailSent(true))
+    }
+  }, [token, forced, forcedEmail, forcedEmailSent])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (password !== confirm) { toast.error('As senhas nao coincidem'); return }
-    if (password.length < 6) { toast.error('Senha deve ter pelo menos 6 caracteres'); return }
+    if (password.length < 8) { toast.error('Senha deve ter pelo menos 8 caracteres'); return }
 
     setLoading(true)
     try {
@@ -37,6 +54,21 @@ function ResetPasswordForm() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (!token && forced) {
+    return (
+      <div className="text-center">
+        <div className="text-4xl mb-4">&#128231;</div>
+        <p className="text-stardust mb-2">Redefinicao de senha necessaria</p>
+        <p className="text-muted text-sm mb-6">
+          {forcedEmailSent
+            ? `Enviamos um link de redefinicao para ${forcedEmail}. Verifique sua caixa de entrada (e o spam).`
+            : 'Enviando link de redefinicao para o seu email...'}
+        </p>
+        <Link href="/auth/login" className="text-gold hover:underline text-sm">Voltar ao login</Link>
+      </div>
+    )
   }
 
   if (!token) {
@@ -64,7 +96,7 @@ function ResetPasswordForm() {
       <div>
         <label className="block text-stardust/70 text-sm mb-2">Nova senha</label>
         <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-          className="input-field w-full" placeholder="Minimo 6 caracteres" required />
+          className="input-field w-full" placeholder="Minimo 8 caracteres" required />
       </div>
       <div>
         <label className="block text-stardust/70 text-sm mb-2">Confirmar nova senha</label>

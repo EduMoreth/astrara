@@ -132,13 +132,20 @@ export default function BirthForm({ onSubmit, loading }: Props) {
     if (isNaN(day) || isNaN(month) || isNaN(year)) return
     if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900 || year > 2100) return
 
+    // Reject impossible calendar dates (e.g. 31/02) instead of sending them to
+    // the backend and surfacing an opaque error
+    const composed = new Date(year, month - 1, day)
+    if (composed.getFullYear() !== year || composed.getMonth() !== month - 1 || composed.getDate() !== day) {
+      return
+    }
+
     let hour = 12
     let minute = 0
 
     if (!unknownTime && birthTime) {
       const [h, m] = birthTime.split(':').map(Number)
-      hour = h
-      minute = m
+      hour = Number.isFinite(h) ? h : 12
+      minute = Number.isFinite(m) ? m : 0
     }
 
     onSubmit({

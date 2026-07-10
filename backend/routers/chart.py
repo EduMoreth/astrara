@@ -137,8 +137,9 @@ async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = H
     conn = get_connection()
     cur = conn.cursor()
 
-    # Get the chart
-    cur.execute("SELECT * FROM charts WHERE id = %s", (chart_id,))
+    # Get the chart — scoped to the requesting user (IDOR guard: never serve
+    # another user's birth data / interpretation)
+    cur.execute("SELECT * FROM charts WHERE id = %s AND user_id = %s", (chart_id, user_id))
     chart_data = cur.fetchone()
     if not chart_data:
         cur.close()
@@ -169,43 +170,28 @@ async def get_interpretation_pdf(chart_id: str, authorization: Optional[str] = H
             },
         )
 
-    # ── No cache — check credits/purchase ──
-    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user_id,))
-    credits = cur.fetchone()
-    has_credits = credits and credits["credits_balance"] > 0
-
+    # ── No cache — a NEW interpretation always consumes a credit ──
+    # (Re-downloads of an already-generated interpretation are served free from
+    # the cache above. A past completed purchase does NOT grant unlimited new
+    # interpretations — each generation costs 1 credit.)
     cur.execute("""
-        SELECT id FROM purchases
-        WHERE user_id = %s AND status = 'completed'
-        ORDER BY created_at DESC LIMIT 1
+        UPDATE user_credits SET credits_balance = credits_balance - 1,
+                                total_used = total_used + 1,
+                                updated_at = NOW()
+        WHERE user_id = %s AND credits_balance > 0
+        RETURNING credits_balance
     """, (user_id,))
-    has_purchase = cur.fetchone() is not None
-
-    if not has_credits and not has_purchase:
+    updated = cur.fetchone()
+    if not updated:
+        conn.rollback()
         cur.close()
         conn.close()
         raise HTTPException(status_code=402, detail="Creditos insuficientes. Adquira creditos para desbloquear a interpretacao.")
-
-    # Deduct credit atomically
-    if has_credits:
-        cur.execute("""
-            UPDATE user_credits SET credits_balance = credits_balance - 1,
-                                    total_used = total_used + 1,
-                                    updated_at = NOW()
-            WHERE user_id = %s AND credits_balance > 0
-            RETURNING credits_balance
-        """, (user_id,))
-        updated = cur.fetchone()
-        if not updated:
-            conn.rollback()
-            cur.close()
-            conn.close()
-            raise HTTPException(status_code=402, detail="Creditos insuficientes.")
-        cur.execute("""
-            INSERT INTO credit_transactions (user_id, type, amount, description)
-            VALUES (%s, 'use', -1, 'Interpretacao do mapa astral')
-        """, (user_id,))
-        conn.commit()
+    cur.execute("""
+        INSERT INTO credit_transactions (user_id, type, amount, description)
+        VALUES (%s, 'use', -1, 'Interpretacao do mapa astral')
+    """, (user_id,))
+    conn.commit()
 
     # Generate interpretation
     interpretation_text = generate_interpretation(positions, name)
@@ -321,19 +307,20 @@ async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Op
             },
         )
 
-    # ── No cache — check if user has credits or has completed a purchase ──
-    cur.execute("SELECT credits_balance FROM user_credits WHERE user_id = %s", (user_id,))
-    credits_row = cur.fetchone()
-    has_credits = credits_row and credits_row["credits_balance"] > 0
-
+    # ── No cache — a NEW interpretation always consumes a credit ──
+    # (Cached interpretations are re-downloadable for free above. A past completed
+    # purchase does NOT grant unlimited new interpretations.)
     cur.execute("""
-        SELECT id FROM purchases
-        WHERE user_id = %s AND status = 'completed'
-        ORDER BY created_at DESC LIMIT 1
+        UPDATE user_credits
+        SET credits_balance = credits_balance - 1,
+            total_used = total_used + 1,
+            updated_at = NOW()
+        WHERE user_id = %s AND credits_balance > 0
+        RETURNING credits_balance
     """, (user_id,))
-    has_purchase = cur.fetchone() is not None
-
-    if not has_credits and not has_purchase:
+    updated = cur.fetchone()
+    if not updated:
+        conn.rollback()
         cur.close()
         conn.close()
         raise HTTPException(
@@ -341,29 +328,12 @@ async def generate_interpretation_pdf_direct(data: PdfRequest, authorization: Op
             detail="Voce precisa comprar a interpretacao antes de baixar o PDF."
         )
 
-    # Consume 1 credit atomically
-    if has_credits:
-        cur.execute("""
-            UPDATE user_credits
-            SET credits_balance = credits_balance - 1,
-                total_used = total_used + 1,
-                updated_at = NOW()
-            WHERE user_id = %s AND credits_balance > 0
-            RETURNING credits_balance
-        """, (user_id,))
-        updated = cur.fetchone()
-        if not updated:
-            conn.rollback()
-            cur.close()
-            conn.close()
-            raise HTTPException(status_code=402, detail="Creditos insuficientes.")
+    cur.execute("""
+        INSERT INTO credit_transactions (user_id, type, amount, description)
+        VALUES (%s, 'use', -1, 'Interpretacao completa do mapa astral (PDF)')
+    """, (user_id,))
 
-        cur.execute("""
-            INSERT INTO credit_transactions (user_id, type, amount, description)
-            VALUES (%s, 'use', -1, 'Interpretacao completa do mapa astral (PDF)')
-        """, (user_id,))
-
-        conn.commit()
+    conn.commit()
 
     # Generate interpretation with AI
     interpretation_text = generate_interpretation(data.positions, data.name)

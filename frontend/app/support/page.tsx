@@ -53,27 +53,49 @@ export default function SupportPage() {
   }, [router])
 
   async function loadTickets() {
-    const res = await fetch(`${API_URL}/support/tickets`, { headers: getHeaders() })
-    if (res.ok) setTickets(await res.json())
+    try {
+      const res = await fetch(`${API_URL}/support/tickets`, { headers: getHeaders() })
+      if (res.status === 401) {
+        localStorage.removeItem('astrara_token')
+        router.push('/auth/login')
+        return
+      }
+      if (res.ok) {
+        const data = await res.json()
+        setTickets(Array.isArray(data) ? data : [])
+      }
+    } catch { /* network error: keep current list */ }
   }
 
   async function loadTicket(id: string) {
-    const res = await fetch(`${API_URL}/support/tickets/${id}`, { headers: getHeaders() })
-    if (res.ok) {
-      const data = await res.json()
-      setTicketDetail(data.ticket)
-      setMessages(data.messages)
-      setSelectedTicket(id)
+    try {
+      const res = await fetch(`${API_URL}/support/tickets/${id}`, { headers: getHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        if (data && data.ticket) {
+          setTicketDetail(data.ticket)
+          setMessages(Array.isArray(data.messages) ? data.messages : [])
+          setSelectedTicket(id)
+        }
+      }
+    } catch {
+      toast.error('Erro ao carregar o ticket')
     }
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch(`${API_URL}/support/tickets`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ subject: newSubject, message: newMessage }),
-    })
+    let res: Response
+    try {
+      res = await fetch(`${API_URL}/support/tickets`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ subject: newSubject, message: newMessage }),
+      })
+    } catch {
+      toast.error('Erro de conexao. Tente novamente.')
+      return
+    }
     if (res.ok) {
       toast.success('Ticket criado com sucesso')
       setShowCreate(false)
@@ -88,15 +110,21 @@ export default function SupportPage() {
   async function handleReply(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedTicket) return
-    const res = await fetch(`${API_URL}/support/tickets/${selectedTicket}/reply`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ message: replyText }),
-    })
-    if (res.ok) {
-      toast.success('Resposta enviada')
-      setReplyText('')
-      loadTicket(selectedTicket)
+    try {
+      const res = await fetch(`${API_URL}/support/tickets/${selectedTicket}/reply`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ message: replyText }),
+      })
+      if (res.ok) {
+        toast.success('Resposta enviada')
+        setReplyText('')
+        loadTicket(selectedTicket)
+      } else {
+        toast.error('Erro ao enviar resposta. Tente novamente.')
+      }
+    } catch {
+      toast.error('Erro de conexao. Tente novamente.')
     }
   }
 
