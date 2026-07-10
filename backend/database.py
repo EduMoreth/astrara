@@ -1,5 +1,7 @@
 import os
+import threading
 import psycopg2
+from psycopg2 import pool as pg_pool
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
@@ -8,13 +10,86 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
-def get_connection():
-    """Get a new database connection."""
+def _dsn():
     conn_str = DATABASE_URL
     if conn_str and "sslmode" not in conn_str:
         sep = "&" if "?" in conn_str else "?"
         conn_str = conn_str + sep + "sslmode=require"
-    return psycopg2.connect(conn_str, cursor_factory=RealDictCursor)
+    return conn_str
+
+
+# ── Connection pool ──────────────────────────────────────────
+# SECURITY_CHECKLIST II: "Connection pooling configurado — nunca conexao nova
+# por request". A shared pool replaces the previous connect-per-request. If the
+# pool is disabled/unavailable/exhausted we fall back to a direct connection, so
+# behavior degrades to the old path instead of failing.
+_POOL_ENABLED = os.getenv("DB_POOL_ENABLED", "true").strip().lower() not in ("0", "false", "no")
+_POOL_MIN = int(os.getenv("DB_POOL_MIN", "1"))
+_POOL_MAX = int(os.getenv("DB_POOL_MAX", "10"))
+
+_pool = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = pg_pool.ThreadedConnectionPool(
+                    _POOL_MIN, _POOL_MAX, _dsn(), cursor_factory=RealDictCursor
+                )
+    return _pool
+
+
+class _PooledConnection:
+    """Proxies a pooled connection so existing code calling conn.close() returns
+    it to the pool instead of destroying it. Any open/aborted transaction is
+    rolled back on return, so a connection is never handed to the next request
+    in a dirty state."""
+
+    def __init__(self, pool, conn):
+        self.__dict__["_pool"] = pool
+        self.__dict__["_conn"] = conn
+        self.__dict__["_returned"] = False
+
+    def close(self):
+        if self.__dict__["_returned"]:
+            return
+        self.__dict__["_returned"] = True
+        conn = self.__dict__["_conn"]
+        try:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            self.__dict__["_pool"].putconn(conn)
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def __getattr__(self, name):
+        return getattr(self.__dict__["_conn"], name)
+
+    def __setattr__(self, name, value):
+        setattr(self.__dict__["_conn"], name, value)
+
+
+def get_connection():
+    """Get a database connection from the shared pool.
+
+    Falls back to a direct connection if pooling is disabled, the pool cannot be
+    created, or it is momentarily exhausted — never worse than the old
+    connect-per-request behavior."""
+    if _POOL_ENABLED:
+        try:
+            pool = _get_pool()
+            return _PooledConnection(pool, pool.getconn())
+        except Exception as e:
+            print(f"DB pool unavailable, using direct connection: {e}")
+    return psycopg2.connect(_dsn(), cursor_factory=RealDictCursor)
 
 
 def init_db():
@@ -63,6 +138,16 @@ def init_db():
             svg_data TEXT,
             created_at TIMESTAMP DEFAULT NOW()
         );
+    """)
+
+    # Persist houses + aspects for saved charts (additive, non-destructive) so
+    # reopening a saved chart renders the full wheel, not a degraded one.
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE charts ADD COLUMN IF NOT EXISTS houses_json JSONB;
+            ALTER TABLE charts ADD COLUMN IF NOT EXISTS aspects_json JSONB;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
     """)
 
     # ── Purchases ────────────────────────────────────────
@@ -141,6 +226,20 @@ def init_db():
             reference_id VARCHAR(255),
             created_at TIMESTAMP DEFAULT NOW()
         );
+    """)
+
+    # Defense-in-depth against double-crediting a payment: a partial unique index
+    # so a given Stripe session can only ever produce one 'purchase' transaction.
+    # Only covers type='purchase' (manual/refund rows legitimately share a
+    # reference_id). Wrapped so pre-existing duplicates can't block startup — the
+    # row-lock in _fulfill_purchase already prevents new ones.
+    cur.execute("""
+        DO $$ BEGIN
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_tx_purchase_reference
+                ON credit_transactions (reference_id)
+                WHERE type = 'purchase' AND reference_id IS NOT NULL;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
     """)
 
     # ── Admin Logs ───────────────────────────────────────

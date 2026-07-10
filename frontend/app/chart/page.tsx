@@ -442,6 +442,8 @@ export default function ChartPage() {
                                   birth_city: form.city || '',
                                   birth_country: form.country || '',
                                   positions_json: result?.positions || {},
+                                  houses_json: result?.houses || [],
+                                  aspects_json: result?.aspects || [],
                                 }),
                               })
                               if (!res.ok) {
