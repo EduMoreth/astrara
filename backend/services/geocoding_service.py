@@ -21,9 +21,20 @@ COUNTRY_CODES = {
 }
 
 
+# Placeholder values shipped in .env.example — treat these as "not configured"
+# so we fall straight through to Nominatim instead of wasting a call on a 401.
+_KEY_PLACEHOLDERS = {"sua-chave-opencage-aqui", "your-opencage-key-here", "changeme"}
+
+
 def _opencage_key() -> str:
-    """OpenCage API key from env. Empty string means fall back to Nominatim."""
-    return os.getenv("OPENCAGE_API_KEY", "").strip()
+    """Real OpenCage API key from env, or "" to fall back to Nominatim.
+
+    Returns empty when the var is unset or still holds a placeholder value.
+    """
+    key = os.getenv("OPENCAGE_API_KEY", "").strip()
+    if not key or key.lower() in _KEY_PLACEHOLDERS:
+        return ""
+    return key
 
 
 # ─────────────────────────── Public API ───────────────────────────
