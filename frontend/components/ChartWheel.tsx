@@ -117,6 +117,12 @@ function spreadPlanets(items: { key: string; deg: number }[], minGap: number) {
 }
 
 export default function ChartWheel({ positions, houses, aspects, birthName, birthDate, birthTime, birthCity }: Props) {
+  // Defensive: cached/saved charts may persist houses/aspects in a malformed shape
+  // (e.g. an empty object instead of an array). Normalize so a bad shape can never
+  // throw `.map is not a function` and crash the whole page.
+  const houseList = Array.isArray(houses) ? houses : []
+  const aspectList = Array.isArray(aspects) ? aspects : []
+
   const cx = 300
   const cy = 300
   const outerR = 275
@@ -221,7 +227,7 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
         })}
 
         {/* House cusps */}
-        {houses?.map((house, i) => {
+        {houseList.map((house, i) => {
           const deg = adj(house.sign, house.deg)
           const isCardinal = i === 0 || i === 3 || i === 6 || i === 9
           const p1 = polarToXY(cx, cy, centerR, deg)
@@ -248,7 +254,7 @@ export default function ChartWheel({ positions, houses, aspects, birthName, birt
         })}
 
         {/* ── Aspect Lines ─────────────────────────────── */}
-        {aspects && aspects.length > 0 && aspects.map((aspect, i) => {
+        {aspectList.length > 0 && aspectList.map((aspect, i) => {
           const p1Key = PLANET_NAME_MAP[aspect.p1] || aspect.p1.toLowerCase()
           const p2Key = PLANET_NAME_MAP[aspect.p2] || aspect.p2.toLowerCase()
 

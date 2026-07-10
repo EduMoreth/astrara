@@ -204,7 +204,7 @@ export default function DashboardPage() {
                         // Store the cached chart result directly — no need to recalculate
                         sessionStorage.setItem('astrara_chart_result', JSON.stringify({
                           positions: chart.positions_json,
-                          houses: {},
+                          houses: [],
                           aspects: [],
                           svg: chart.svg_data || '',
                         }))
