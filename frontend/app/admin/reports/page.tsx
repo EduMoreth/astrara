@@ -43,8 +43,16 @@ export default function AdminReportsPage() {
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
     fetch(`${API_URL}/admin/api/reports/financial?${params}`, { headers: getAdminHeaders() })
-      .then(r => r.json())
-      .then(setReport)
+      .then(r => {
+        if (r.status === 401) {
+          localStorage.removeItem('admin_token')
+          window.location.replace('/admin/login')
+          return null
+        }
+        if (!r.ok) throw new Error('request failed')
+        return r.json()
+      })
+      .then(data => { if (data) setReport(data) })
       .catch(() => toast.error('Erro ao carregar'))
   }, [dateFrom, dateTo])
 
@@ -115,7 +123,7 @@ export default function AdminReportsPage() {
       </div>
 
       {/* Daily breakdown */}
-      {report.daily_breakdown.length > 0 && (
+      {(report.daily_breakdown?.length ?? 0) > 0 && (
         <div className="glass-card p-6">
           <h3 className="text-stardust text-sm font-medium mb-4">Receita diaria</h3>
           <div className="max-h-64 overflow-y-auto">
@@ -128,7 +136,7 @@ export default function AdminReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {report.daily_breakdown.map(d => (
+                {(report.daily_breakdown ?? []).map(d => (
                   <tr key={d.day} className="border-b border-white/[0.03]">
                     <td className="px-4 py-2 text-stardust text-sm">{new Date(d.day + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
                     <td className="px-4 py-2 text-gold text-sm text-right">{fmt(d.revenue)}</td>
@@ -142,7 +150,7 @@ export default function AdminReportsPage() {
       )}
 
       {/* Monthly breakdown */}
-      {report.monthly_breakdown.length > 0 && (
+      {(report.monthly_breakdown?.length ?? 0) > 0 && (
         <div className="glass-card p-6">
           <h3 className="text-stardust text-sm font-medium mb-4">Receita mensal</h3>
           <table className="w-full">
@@ -154,7 +162,7 @@ export default function AdminReportsPage() {
               </tr>
             </thead>
             <tbody>
-              {report.monthly_breakdown.map(m => (
+              {(report.monthly_breakdown ?? []).map(m => (
                 <tr key={m.month} className="border-b border-white/[0.03]">
                   <td className="px-4 py-2 text-stardust text-sm">{m.month}</td>
                   <td className="px-4 py-2 text-gold text-sm text-right">{fmt(m.revenue)}</td>
@@ -169,7 +177,7 @@ export default function AdminReportsPage() {
       {/* Top products */}
       <div className="glass-card p-6">
         <h3 className="text-stardust text-sm font-medium mb-4">Produtos mais vendidos</h3>
-        {report.top_products.length > 0 ? (
+        {(report.top_products?.length ?? 0) > 0 ? (
           <table className="w-full">
             <thead>
               <tr className="border-b border-gold/10">
@@ -179,7 +187,7 @@ export default function AdminReportsPage() {
               </tr>
             </thead>
             <tbody>
-              {report.top_products.map((p, i) => (
+              {(report.top_products ?? []).map((p, i) => (
                 <tr key={i} className="border-b border-white/[0.03]">
                   <td className="px-4 py-2 text-stardust text-sm">{p.name}</td>
                   <td className="px-4 py-2 text-muted text-sm text-right">{p.sales}</td>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { getCharts, deleteChart } from '@/lib/admin-api'
 
@@ -11,16 +11,20 @@ export default function AdminChartsPage() {
   const [pages, setPages] = useState(1)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     getCharts(page).then(res => {
-      setCharts(res.charts)
-      setTotal(res.total)
-      setPages(res.pages)
+      setCharts(res.charts ?? [])
+      setTotal(res.total ?? 0)
+      setPages(res.pages ?? 1)
     }).catch(() => toast.error('Erro ao carregar'))
   }, [page])
 
+  useEffect(() => { load() }, [load])
+
   async function handleDelete(id: string) {
-    try { await deleteChart(id); toast.success('Mapa excluido'); setConfirmDelete(null); setPage(1) }
+    // Call load() directly so the list refreshes even when already on page 1
+    // (setPage(1) would be a no-op there).
+    try { await deleteChart(id); toast.success('Mapa excluido'); setConfirmDelete(null); load() }
     catch { toast.error('Erro') }
   }
 
