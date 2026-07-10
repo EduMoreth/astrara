@@ -33,16 +33,27 @@ export default function ChartPage() {
 
     // Fetch interpretation product info
     fetch(`${API_URL}/chart/interpretation-product`)
-      .then(r => r.json())
-      .then(setInterpProduct)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data && typeof data.price_cents === 'number') setInterpProduct(data)
+      })
       .catch(() => {})
 
     // First check if there's a cached chart result (e.g. from dashboard "Ver mapa")
     const saved = sessionStorage.getItem('astrara_chart_result')
     if (saved) {
       try {
-        setResult(JSON.parse(saved))
-      } catch { /* ignore */ }
+        const parsed = JSON.parse(saved)
+        // Validate shape — a malformed cached value (e.g. from an older app
+        // version) would crash the wheel and persist across reloads
+        if (parsed && typeof parsed.positions === 'object' && parsed.positions !== null) {
+          setResult(parsed)
+        } else {
+          sessionStorage.removeItem('astrara_chart_result')
+        }
+      } catch {
+        sessionStorage.removeItem('astrara_chart_result')
+      }
       // Don't auto-generate if we already have a result
       sessionStorage.removeItem('astrara_auto_generate')
       return
@@ -191,7 +202,13 @@ export default function ChartPage() {
         },
         body: JSON.stringify({
           positions: result?.positions,
-          name: 'Meu Mapa Astral',
+          // Personalize the interpretation/PDF with the person's real name
+          name: (() => {
+            try {
+              const f = JSON.parse(sessionStorage.getItem('astrara_last_form') || '{}')
+              return f.name || 'Meu Mapa Astral'
+            } catch { return 'Meu Mapa Astral' }
+          })(),
         }),
         signal: controller.signal,
       })
@@ -262,7 +279,12 @@ export default function ChartPage() {
       _checkCreditsAndUnlock(token)
     }
 
-    // On mobile, also listen for browser close event to re-check payment
+    // On mobile, also listen for browser close event to re-check payment.
+    // Keep the listener handle and remove it on cleanup — otherwise every
+    // re-run of this effect stacks another listener (duplicate verifies and
+    // toasts) and the old one fires on an unmounted component.
+    let removed = false
+    let browserListener: { remove: () => Promise<void> } | null = null
     if (typeof window !== 'undefined') {
       import('@capacitor/core').then(({ Capacitor }) => {
         if (Capacitor.isNativePlatform()) {
@@ -287,10 +309,17 @@ export default function ChartPage() {
                     .finally(() => _checkCreditsAndUnlock(tk))
                 }
               }
+            }).then(handle => {
+              if (removed) handle.remove()
+              else browserListener = handle
             })
           })
         }
       })
+    }
+    return () => {
+      removed = true
+      browserListener?.remove()
     }
   }, [isLoggedIn])
 

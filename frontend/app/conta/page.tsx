@@ -30,8 +30,21 @@ export default function AccountPage() {
     if (!token) { router.push('/auth/login'); return }
 
     fetch(`${API_URL}/user/me`, { headers: getHeaders() })
-      .then(r => r.json())
-      .then(d => { setUser(d); setEditName(d.name) })
+      .then(r => {
+        // Expired/invalid token: FastAPI returns 401 with a JSON body, which
+        // .catch does NOT intercept — check res.ok and redirect to login
+        if (!r.ok) {
+          localStorage.removeItem('astrara_token')
+          router.push('/auth/login')
+          return null
+        }
+        return r.json()
+      })
+      .then(d => {
+        if (!d) return
+        setUser(d)
+        setEditName(d.name || '')
+      })
       .catch(() => router.push('/auth/login'))
 
     fetch(`${API_URL}/user/credits`, { headers: getHeaders() })
@@ -48,53 +61,71 @@ export default function AccountPage() {
   }, [router])
 
   async function handleUpdateName() {
-    const res = await fetch(`${API_URL}/user/me`, {
-      method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ name: editName }),
-    })
-    if (res.ok) toast.success('Nome atualizado')
-    else toast.error('Erro ao atualizar')
+    try {
+      const res = await fetch(`${API_URL}/user/me`, {
+        method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ name: editName }),
+      })
+      if (res.ok) toast.success('Nome atualizado')
+      else toast.error('Erro ao atualizar')
+    } catch {
+      toast.error('Erro de conexao. Tente novamente.')
+    }
   }
 
   async function handleExportData() {
-    const token = localStorage.getItem('astrara_token')
-    const res = await fetch(`${API_URL}/user/export-data`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (res.ok) {
-      const blob = await res.blob()
-      const { downloadFile } = await import('@/lib/download')
-      await downloadFile(blob, 'astrara-meus-dados.json')
-      toast.success('Dados exportados!')
-    } else toast.error('Erro ao exportar')
+    try {
+      const token = localStorage.getItem('astrara_token')
+      const res = await fetch(`${API_URL}/user/export-data`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const blob = await res.blob()
+        const { downloadFile } = await import('@/lib/download')
+        await downloadFile(blob, 'astrara-meus-dados.json')
+        toast.success('Dados exportados!')
+      } else toast.error('Erro ao exportar')
+    } catch {
+      toast.error('Erro de conexao. Tente novamente.')
+    }
   }
 
   async function handleDeleteAccount() {
     if (deleteConfirm !== 'EXCLUIR') { toast.error('Digite EXCLUIR para confirmar'); return }
-    const res = await fetch(`${API_URL}/user/delete-account`, {
+    let res: Response
+    try {
+      res = await fetch(`${API_URL}/user/delete-account`, {
       method: 'POST', headers: getHeaders(),
       body: JSON.stringify({ password: deletePassword, confirmation: deleteConfirm }),
-    })
+      })
+    } catch {
+      toast.error('Erro de conexao. Tente novamente.')
+      return
+    }
     if (res.ok) {
       localStorage.removeItem('astrara_token')
       toast.success('Conta excluida. Todos os dados foram removidos.')
       router.push('/')
     } else {
-      const err = await res.json()
-      toast.error(err.detail || 'Erro ao excluir conta')
+      const err = await res.json().catch(() => ({}))
+      toast.error(typeof err.detail === 'string' ? err.detail : 'Erro ao excluir conta')
     }
   }
 
   async function handleChangePassword() {
-    const res = await fetch(`${API_URL}/user/change-password`, {
-      method: 'POST', headers: getHeaders(),
-      body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
-    })
-    if (res.ok) {
-      toast.success('Senha alterada com sucesso')
-      setShowChangePassword(false); setCurrentPw(''); setNewPw('')
-    } else {
-      const err = await res.json()
-      toast.error(err.detail || 'Erro ao alterar senha')
+    try {
+      const res = await fetch(`${API_URL}/user/change-password`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
+      })
+      if (res.ok) {
+        toast.success('Senha alterada com sucesso')
+        setShowChangePassword(false); setCurrentPw(''); setNewPw('')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(typeof err.detail === 'string' ? err.detail : 'Erro ao alterar senha')
+      }
+    } catch {
+      toast.error('Erro de conexao. Tente novamente.')
     }
   }
 

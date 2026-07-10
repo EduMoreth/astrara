@@ -26,8 +26,8 @@ export default function RegisterPage() {
       return
     }
 
-    if (password.length < 6) {
-      toast.error('A senha deve ter pelo menos 6 caracteres')
+    if (password.length < 8) {
+      toast.error('A senha deve ter pelo menos 8 caracteres')
       return
     }
 
@@ -110,11 +110,11 @@ export default function RegisterPage() {
               <input
                 type="password"
                 className="input-field"
-                placeholder="Minimo 6 caracteres"
+                placeholder="Minimo 8 caracteres"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
               />
             </div>
 

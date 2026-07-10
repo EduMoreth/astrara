@@ -8,6 +8,11 @@ router = APIRouter(prefix="/blog", tags=["blog"])
 @router.get("/posts")
 async def list_blog_posts(page: int = 1, limit: int = 10, category: str = ""):
     """List published blog posts for the public blog page."""
+    # Clamp pagination: page>=1 avoids negative OFFSET; limit<=50 avoids
+    # resource-exhaustion via huge limits
+    page = max(1, page)
+    limit = min(max(1, limit), 50)
+
     conn = get_connection()
     cur = conn.cursor()
     offset = (page - 1) * limit
@@ -27,7 +32,11 @@ async def list_blog_posts(page: int = 1, limit: int = 10, category: str = ""):
 
     posts = cur.fetchall()
 
-    cur.execute("SELECT COUNT(*) as total FROM blog_posts WHERE status = 'published'")
+    # Total must honor the same filter as the list, or 'pages' is wrong for categories
+    if category:
+        cur.execute("SELECT COUNT(*) as total FROM blog_posts WHERE status = 'published' AND category = %s", (category,))
+    else:
+        cur.execute("SELECT COUNT(*) as total FROM blog_posts WHERE status = 'published'")
     total = cur.fetchone()["total"]
 
     cur.close()

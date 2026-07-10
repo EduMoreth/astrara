@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Request
 from jose import jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import bcrypt
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -94,15 +94,25 @@ async def login(request: Request, data: UserLogin):
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT id, name, email, password_hash, force_password_reset FROM users WHERE email = %s",
+        "SELECT id, name, email, password_hash, force_password_reset, status FROM users WHERE email = %s",
         (data.email,),
     )
     user = cur.fetchone()
     cur.close()
     conn.close()
 
-    if not user or not verify_password(data.password, user["password_hash"]):
+    try:
+        password_ok = bool(user) and verify_password(data.password, user["password_hash"])
+    except Exception:
+        # Malformed/empty hash (e.g. anonymized account) — treat as wrong password
+        password_ok = False
+
+    if not user or not password_ok:
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+
+    # Banned/deleted accounts cannot log in
+    if user.get("status") in ("banned", "deleted"):
+        raise HTTPException(status_code=403, detail="Conta desativada. Entre em contato com o suporte.")
 
     # Check if forced password reset
     if user.get("force_password_reset"):
@@ -124,7 +134,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str
+    new_password: str = Field(min_length=8)
 
 
 @router.post("/forgot-password")
@@ -181,7 +191,8 @@ async def forgot_password(request: Request, data: ForgotPasswordRequest):
 
 
 @router.post("/reset-password")
-async def reset_password(data: ResetPasswordRequest):
+@limiter.limit("5/minute")
+async def reset_password(request: Request, data: ResetPasswordRequest):
     conn = get_connection()
     cur = conn.cursor()
 

@@ -28,7 +28,15 @@ export default function LoginPage() {
       }
       setToken(res.access_token)
       toast.success('Bem-vindo de volta!')
-      router.push('/dashboard')
+      // Preserve the purchase flow: if the user came from the interpretation
+      // CTA, send them back to their chart instead of the dashboard
+      const intent = sessionStorage.getItem('astrara_intent')
+      if (intent === 'buy_interpretation') {
+        sessionStorage.removeItem('astrara_intent')
+        router.push('/chart')
+      } else {
+        router.push('/dashboard')
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao entrar'
       toast.error(message)

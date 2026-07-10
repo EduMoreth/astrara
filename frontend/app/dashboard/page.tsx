@@ -55,28 +55,40 @@ export default function DashboardPage() {
   const [limits, setLimits] = useState<ChartLimit | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [credits, setCredits] = useState<number | null>(null)
-  const user = getUserFromToken()
+  // Token is read in an effect, not during render — reading localStorage while
+  // rendering causes a hydration mismatch (server renders null, client doesn't)
+  const [user, setUser] = useState<{ name?: string } | null>(null)
 
   function loadData() {
-    if (!user) return
     getUserCharts()
       .then(setCharts)
-      .catch(() => toast.error('Erro ao carregar seus mapas'))
+      .catch((err: unknown) => {
+        // Expired/invalid session: send the user to login instead of showing
+        // a false "no charts" state
+        if (err instanceof Error && /401|Token|Login/i.test(err.message)) {
+          removeToken()
+          router.push('/auth/login')
+          return
+        }
+        toast.error('Erro ao carregar seus mapas')
+      })
       .finally(() => setLoading(false))
 
     fetch(`${API_URL}/user/charts/limit`, { headers: getHeaders() })
-      .then(r => r.json())
-      .then(setLimits)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data && typeof data.saved_count === 'number') setLimits(data) })
       .catch(() => {})
 
     fetch(`${API_URL}/user/credits`, { headers: getHeaders() })
-      .then(r => r.json())
-      .then(data => setCredits(data.credits ?? data.balance ?? 0))
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data) setCredits(data.credits_balance ?? data.credits ?? 0) })
       .catch(() => {})
   }
 
   useEffect(() => {
-    if (!user) { router.push('/auth/login'); return }
+    const u = getUserFromToken()
+    if (!u) { router.push('/auth/login'); return }
+    setUser(u)
     loadData()
   }, [])
 
@@ -203,7 +215,7 @@ export default function DashboardPage() {
                         sessionStorage.setItem('astrara_last_form', JSON.stringify(formData))
                         // Store the cached chart result directly — no need to recalculate
                         sessionStorage.setItem('astrara_chart_result', JSON.stringify({
-                          positions: chart.positions_json,
+                          positions: chart.positions_json || {},
                           houses: [],
                           aspects: [],
                           svg: chart.svg_data || '',

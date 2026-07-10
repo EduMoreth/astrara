@@ -69,9 +69,22 @@ async def get_charts(user: dict = Depends(get_current_user)):
     ]
 
 
+class SaveChartRequest(BaseModel):
+    name: str
+    birth_date: str
+    birth_time: str
+    birth_city: str
+    birth_country: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    tz_str: Optional[str] = None
+    positions_json: dict = {}
+    svg_data: str = ""
+
+
 @router.post("/charts/save")
 async def save_chart(
-    data: dict,
+    data: SaveChartRequest,
     user: dict = Depends(get_current_user),
 ):
     conn = get_connection()
@@ -115,16 +128,16 @@ async def save_chart(
            RETURNING id""",
         (
             user["sub"],
-            data["name"],
-            data["birth_date"],
-            data["birth_time"],
-            data["birth_city"],
-            data.get("birth_country"),
-            data.get("lat"),
-            data.get("lng"),
-            data.get("tz_str"),
-            json.dumps(data.get("positions_json", {})),
-            data.get("svg_data", ""),
+            data.name,
+            data.birth_date,
+            data.birth_time,
+            data.birth_city,
+            data.birth_country,
+            data.lat,
+            data.lng,
+            data.tz_str,
+            json.dumps(data.positions_json or {}),
+            data.svg_data,
         ),
     )
     row = cur.fetchone()
@@ -287,11 +300,38 @@ async def delete_account(data: DeleteAccountRequest, user: dict = Depends(get_cu
         conn.close()
         raise HTTPException(status_code=401, detail="Senha incorreta")
 
-    # Delete all user data (CASCADE handles related records)
-    cur.execute("DELETE FROM users WHERE id = %s", (user["sub"],))
-    conn.commit()
-    cur.close()
-    conn.close()
+    # LGPD deletion via anonymization (SECURITY_CHECKLIST I.6: soft delete only).
+    # Personal data is removed; purchase/refund records are kept anonymized for
+    # fiscal/legal obligation (LGPD Art. 16). A hard DELETE would also fail:
+    # purchases/refunds reference users(id) without ON DELETE CASCADE.
+    try:
+        # Remove personal-data records outright
+        cur.execute("DELETE FROM charts WHERE user_id = %s", (user["sub"],))
+        cur.execute("DELETE FROM chart_interpretations WHERE user_id = %s", (user["sub"],))
+        cur.execute(
+            "UPDATE chart_generations SET name = '[removido]', ip_address = NULL WHERE user_id = %s",
+            (user["sub"],),
+        )
+        # Anonymize the user row (email must stay unique)
+        cur.execute("""
+            UPDATE users
+            SET name = '[Conta excluida]',
+                email = 'excluido-' || id || '@astrara.invalid',
+                password_hash = '',
+                reset_token = NULL,
+                reset_token_expires = NULL,
+                status = 'deleted',
+                updated_at = NOW()
+            WHERE id = %s
+        """, (user["sub"],))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Delete account error for user {user['sub']}: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao excluir a conta. Contate o suporte.")
+    finally:
+        cur.close()
+        conn.close()
 
     return {"message": "Conta excluida com sucesso. Todos os seus dados foram removidos."}
 
@@ -340,8 +380,8 @@ class ChangePasswordRequest(BaseModel):
 async def change_password(data: ChangePasswordRequest, user: dict = Depends(get_current_user)):
     from routers.auth import verify_password
 
-    if len(data.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Nova senha deve ter pelo menos 6 caracteres")
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Nova senha deve ter pelo menos 8 caracteres")
 
     conn = get_connection()
     cur = conn.cursor()

@@ -13,6 +13,14 @@ stripe.api_key = os.getenv("STRIPE_API_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
 
+def _mask_email(email: str) -> str:
+    """LGPD: never log personal data in plaintext (edu***@gmail.com)."""
+    if not email or "@" not in email:
+        return "***"
+    local, _, domain = email.partition("@")
+    return f"{local[:3]}***@{domain}"
+
+
 def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Login necessario")
@@ -34,9 +42,12 @@ def _fulfill_purchase(session_id: str, user_id: str, product_id: str) -> int:
     cur = conn.cursor()
 
     try:
-        # Check if already fulfilled (idempotent guard)
+        # Check if already fulfilled (idempotent guard).
+        # FOR UPDATE row-locks the purchase so a concurrent fulfillment attempt
+        # (Stripe webhook + post-redirect verify firing at the same time) blocks
+        # here, then sees status='completed' and no-ops — no double crediting.
         cur.execute(
-            "SELECT status FROM purchases WHERE stripe_payment_id = %s",
+            "SELECT status FROM purchases WHERE stripe_payment_id = %s FOR UPDATE",
             (session_id,),
         )
         purchase = cur.fetchone()
@@ -212,7 +223,7 @@ async def stripe_webhook(request: Request):
             raise HTTPException(status_code=400, detail="Invalid signature")
         except Exception as e:
             print(f"Webhook error: {e}")
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail="Invalid webhook payload")
     else:
         print("CRITICAL: STRIPE_WEBHOOK_SECRET not configured — rejecting webhook")
         raise HTTPException(
@@ -232,7 +243,7 @@ async def stripe_webhook(request: Request):
 
         print(f"[Webhook] checkout.session.completed: session={session_id}, "
               f"user_id={user_id}, product_id={product_id}, "
-              f"payment_status={payment_status}, email={customer_email}")
+              f"payment_status={payment_status}, email={_mask_email(customer_email)}")
 
         if payment_status == "paid" and user_id:
             try:
@@ -249,7 +260,7 @@ async def stripe_webhook(request: Request):
 
         elif payment_status == "paid" and not user_id and customer_email:
             # Fallback: find user by email if metadata is missing
-            print(f"[Webhook] No user_id in metadata, trying email lookup: {customer_email}")
+            print(f"[Webhook] No user_id in metadata, trying email lookup: {_mask_email(customer_email)}")
             try:
                 conn = get_connection()
                 cur = conn.cursor()
@@ -267,7 +278,7 @@ async def stripe_webhook(request: Request):
                     )
                     print(f"[Webhook] Credits added via email lookup: {credits_added} for user {found_user_id}")
                 else:
-                    print(f"[Webhook] No user found with email {customer_email}")
+                    print(f"[Webhook] No user found with email {_mask_email(customer_email)}")
             except Exception as e:
                 print(f"[Webhook] Email lookup error: {e}")
                 raise HTTPException(status_code=500, detail="Fulfillment error")

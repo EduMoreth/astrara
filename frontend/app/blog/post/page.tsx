@@ -99,7 +99,7 @@ function BlogPostContent() {
           {post.title as string}
         </h1>
         <div className="flex items-center gap-4 text-muted text-sm mb-8">
-          <span>{new Date(post.published_at as string).toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+          <span>{(() => { const d = new Date(post.published_at as string); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' }) })()}</span>
           <span>{post.views as number} visualizacoes</span>
         </div>
 
@@ -116,7 +116,7 @@ function BlogPostContent() {
             [&_blockquote]:border-l-2 [&_blockquote]:border-gold/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted"
           dangerouslySetInnerHTML={{
             __html: sanitizeHtml(
-              (post.content as string)
+              (typeof post.content === 'string' ? post.content : '')
                 .replace(/^### (.*$)/gm, '<h3>$1</h3>')
                 .replace(/^## (.*$)/gm, '<h2>$1</h2>')
                 .replace(/^# (.*$)/gm, '<h1>$1</h1>')

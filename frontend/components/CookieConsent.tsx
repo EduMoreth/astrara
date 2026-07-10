@@ -7,15 +7,16 @@ export default function CookieConsent() {
   const [show, setShow] = useState(false)
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
     // Don't show cookie consent in native apps (no cookies used)
     import('@capacitor/core').then(({ Capacitor }) => {
       if (Capacitor.isNativePlatform()) return
       const consent = localStorage.getItem('astrara_cookie_consent')
       if (!consent) {
-        const t = setTimeout(() => setShow(true), 1000)
-        return () => clearTimeout(t)
+        timer = setTimeout(() => setShow(true), 1000)
       }
     })
+    return () => { if (timer) clearTimeout(timer) }
   }, [])
 
   function accept() {
