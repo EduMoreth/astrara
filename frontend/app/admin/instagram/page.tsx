@@ -25,12 +25,26 @@ export default function AdminInstagramPage() {
   const [posts, setPosts] = useState<Post[]>([])
   const [total, setTotal] = useState(0)
   const [triggering, setTriggering] = useState(false)
-  const [triggerDate, setTriggerDate] = useState(new Date().toISOString().slice(0, 10))
+  // Initialize empty and set on mount to avoid an SSR/client hydration mismatch.
+  const [triggerDate, setTriggerDate] = useState('')
 
   useEffect(() => {
+    setTriggerDate(new Date().toISOString().slice(0, 10))
     fetch(`${API_URL}/admin/api/instagram/posts`, { headers: getAdminHeaders() })
-      .then(r => r.json())
-      .then(data => { setPosts(data.posts); setTotal(data.total) })
+      .then(r => {
+        if (r.status === 401) {
+          localStorage.removeItem('admin_token')
+          window.location.replace('/admin/login')
+          return null
+        }
+        if (!r.ok) throw new Error('request failed')
+        return r.json()
+      })
+      .then(data => {
+        if (!data) return
+        setPosts(Array.isArray(data.posts) ? data.posts : [])
+        setTotal(data.total ?? 0)
+      })
       .catch(() => toast.error('Erro ao carregar posts'))
   }, [])
 
@@ -60,9 +74,11 @@ export default function AdminInstagramPage() {
         }
         // Reload
         const reload = await fetch(`${API_URL}/admin/api/instagram/posts`, { headers: getAdminHeaders() })
-        const reloadData = await reload.json()
-        setPosts(reloadData.posts)
-        setTotal(reloadData.total)
+        if (reload.ok) {
+          const reloadData = await reload.json()
+          setPosts(Array.isArray(reloadData.posts) ? reloadData.posts : [])
+          setTotal(reloadData.total ?? 0)
+        }
       } else {
         toast.error(data.error || 'Erro ao publicar')
       }

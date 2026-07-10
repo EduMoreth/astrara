@@ -17,13 +17,27 @@ interface Ticket { id: string; subject: string; status: string; priority: string
 export default function AdminTicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [total, setTotal] = useState(0)
+  const [pages, setPages] = useState(1)
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
 
   useEffect(() => {
     fetch(`${API_URL}/admin/api/tickets?page=${page}&status=${statusFilter}`, { headers: getAdminHeaders() })
-      .then(r => r.json())
-      .then(data => { setTickets(data.tickets); setTotal(data.total) })
+      .then(r => {
+        if (r.status === 401) {
+          localStorage.removeItem('admin_token')
+          window.location.replace('/admin/login')
+          return null
+        }
+        if (!r.ok) throw new Error('request failed')
+        return r.json()
+      })
+      .then(data => {
+        if (!data) return
+        setTickets(Array.isArray(data.tickets) ? data.tickets : [])
+        setTotal(data.total ?? 0)
+        setPages(data.pages ?? 1)
+      })
       .catch(() => toast.error('Erro ao carregar'))
   }, [page, statusFilter])
 
@@ -75,6 +89,20 @@ export default function AdminTicketsPage() {
           </tbody>
         </table>
       </div>
+
+      {pages > 1 && (
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+            className="px-3 py-1 text-xs rounded-full text-muted border border-gold/20 disabled:opacity-40">
+            Anterior
+          </button>
+          <span className="text-muted text-xs">Pagina {page} de {pages}</span>
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page >= pages}
+            className="px-3 py-1 text-xs rounded-full text-muted border border-gold/20 disabled:opacity-40">
+            Proxima
+          </button>
+        </div>
+      )}
     </div>
   )
 }

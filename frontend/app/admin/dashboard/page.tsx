@@ -20,12 +20,18 @@ function StatCard({ icon, label, value, delta, color }: { icon: string; label: s
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Record<string, number> | null>(null)
   const [recentUsers, setRecentUsers] = useState<AdminUser[]>([])
+  const [loadError, setLoadError] = useState(false)
 
   useEffect(() => {
-    getStats().then(setStats).catch(console.error)
-    getUsers(1, 10).then(data => setRecentUsers(data.users)).catch(() => {})
+    getStats().then(setStats).catch(() => setLoadError(true))
+    getUsers(1, 10).then(data => setRecentUsers(data.users ?? [])).catch(() => {})
   }, [])
 
+  if (loadError && !stats) return (
+    <div className="text-muted p-8">
+      Nao foi possivel carregar o dashboard. Tente recarregar a pagina.
+    </div>
+  )
   if (!stats) return <div className="text-muted p-8">Carregando dashboard...</div>
 
   const fmt = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`

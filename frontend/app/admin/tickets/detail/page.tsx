@@ -32,8 +32,20 @@ function AdminTicketDetailContent() {
   useEffect(() => {
     if (!ticketId) return
     fetch(`${API_URL}/admin/api/tickets/${ticketId}`, { headers: getAdminHeaders() })
-      .then(r => r.json())
-      .then(data => { setTicket(data.ticket); setMessages(data.messages) })
+      .then(r => {
+        if (r.status === 401) {
+          localStorage.removeItem('admin_token')
+          window.location.replace('/admin/login')
+          return null
+        }
+        if (!r.ok) throw new Error('request failed')
+        return r.json()
+      })
+      .then(data => {
+        if (!data) return
+        setTicket(data.ticket ?? null)
+        setMessages(Array.isArray(data.messages) ? data.messages : [])
+      })
       .catch(() => toast.error('Erro'))
   }, [ticketId])
 
@@ -45,8 +57,13 @@ function AdminTicketDetailContent() {
     if (res.ok) {
       toast.success('Resposta enviada + email enviado ao usuario')
       setReply('')
-      const data = await (await fetch(`${API_URL}/admin/api/tickets/${ticketId}`, { headers: getAdminHeaders() })).json()
-      setMessages(data.messages)
+      try {
+        const r = await fetch(`${API_URL}/admin/api/tickets/${ticketId}`, { headers: getAdminHeaders() })
+        if (r.ok) {
+          const data = await r.json()
+          setMessages(Array.isArray(data.messages) ? data.messages : [])
+        }
+      } catch { /* keep existing messages on reload failure */ }
     } else { toast.error('Erro') }
   }
 

@@ -30,20 +30,20 @@ function AdminUserDetailContent() {
     if (!userId) return
     getUser(userId).then((res) => {
       setData(res)
-      const user = res.user as Record<string, string>
-      setEditName(user.name)
-      setEditPlan(user.plan)
+      const user = (res.user ?? {}) as Record<string, string>
+      setEditName(user.name ?? '')
+      setEditPlan(user.plan ?? '')
     }).catch(() => toast.error('Erro ao carregar usuario'))
   }, [userId])
 
   if (!userId) return <div className="text-muted">ID do usuario nao informado.</div>
   if (!data) return <div className="text-muted">Carregando...</div>
 
-  const user = data.user as Record<string, string>
-  const credits = data.credits as Record<string, number>
-  const charts = data.charts as Record<string, unknown>[]
-  const purchases = data.purchases as Record<string, unknown>[]
-  const creditTx = data.credit_transactions as Record<string, unknown>[]
+  const user = (data.user ?? {}) as Record<string, string>
+  const credits = (data.credits ?? { credits_balance: 0, total_purchased: 0, total_used: 0 }) as Record<string, number>
+  const charts = (data.charts ?? []) as Record<string, unknown>[]
+  const purchases = (data.purchases ?? []) as Record<string, unknown>[]
+  const creditTx = (data.credit_transactions ?? []) as Record<string, unknown>[]
 
   async function handleSave() {
     try {

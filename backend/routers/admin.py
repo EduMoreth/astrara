@@ -20,6 +20,7 @@ from services.stripe_service import (
     get_payment_intents,
 )
 from services.email_service import send_refund_email, send_ticket_reply_email
+from routers.auth import limiter
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 
@@ -63,11 +64,38 @@ def verify_admin_token(request: Request) -> str:
     token = auth.replace("Bearer ", "")
     try:
         payload = jwt.decode(token, ADMIN_JWT_SECRET, algorithms=[ADMIN_JWT_ALGORITHM])
-        if payload.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Acesso negado")
-        return payload["sub"]
     except Exception:
         raise HTTPException(status_code=401, detail="Token admin invalido ou expirado")
+    # Role check outside the try so the 403 is not swallowed into a 401.
+    if payload.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    return payload["sub"]
+
+
+def _clamp_pagination(page: int, limit: int, max_limit: int = 100):
+    """Clamp pagination inputs. Prevents limit=0 (ZeroDivisionError) and huge
+    limits (bulk PII exfiltration). Returns (page, limit, offset)."""
+    try:
+        page = max(1, int(page))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        limit = min(max(1, int(limit)), max_limit)
+    except (TypeError, ValueError):
+        limit = 20
+    return page, limit, (page - 1) * limit
+
+
+# Sensitive user columns never returned to the admin client.
+_SENSITIVE_USER_FIELDS = ("password_hash", "reset_token", "reset_token_expires")
+
+
+def _safe_user(user: dict) -> dict:
+    """Serialize a user row with id as str and all sensitive fields removed."""
+    safe = {k: v for k, v in user.items() if k not in _SENSITIVE_USER_FIELDS}
+    if "id" in safe:
+        safe["id"] = str(safe["id"])
+    return safe
 
 
 def log_action(admin_email: str, action: str, target_type: str = None,
@@ -96,6 +124,7 @@ class AdminLoginRequest(BaseModel):
 
 
 @router.post("/login")
+@limiter.limit("5/minute")
 async def admin_login(data: AdminLoginRequest, request: Request):
     correct_email = os.getenv("SUPERADMIN_EMAIL", "")
     correct_psw = os.getenv("SUPERADMIN_PSW", "")
@@ -215,7 +244,7 @@ async def list_users(
 ):
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
 
     where_clauses = []
     params = []
@@ -250,7 +279,7 @@ async def list_users(
     conn.close()
 
     return {
-        "users": [{**u, "id": str(u["id"]), "password_hash": "***"} for u in users],
+        "users": [_safe_user(u) for u in users],
         "total": total,
         "page": page,
         "pages": (total + limit - 1) // limit,
@@ -275,10 +304,13 @@ async def get_user(user_id: str, admin: str = Depends(verify_admin_token)):
     cur.execute("SELECT * FROM charts WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
     charts = cur.fetchall()
 
+    # Use a correlated subquery (not a JOIN on the non-unique `type` column) so a
+    # purchase is never duplicated when several products share the same type.
     cur.execute("""
-        SELECT p.*, pr.name as product_name
+        SELECT p.*,
+               (SELECT name FROM products WHERE type = p.product_type
+                ORDER BY created_at ASC LIMIT 1) as product_name
         FROM purchases p
-        LEFT JOIN products pr ON pr.type = p.product_type
         WHERE p.user_id = %s ORDER BY p.created_at DESC
     """, (user_id,))
     purchases = cur.fetchall()
@@ -294,7 +326,7 @@ async def get_user(user_id: str, admin: str = Depends(verify_admin_token)):
     conn.close()
 
     return {
-        "user": {**user, "id": str(user["id"]), "password_hash": "***"},
+        "user": _safe_user(user),
         "credits": credits or {"credits_balance": 0, "total_purchased": 0, "total_used": 0},
         "charts": [{**c, "id": str(c["id"])} for c in charts],
         "purchases": [{**p, "id": str(p["id"])} for p in purchases],
@@ -313,9 +345,6 @@ class UserUpdateRequest(BaseModel):
 @router.patch("/users/{user_id}")
 async def update_user(user_id: str, data: UserUpdateRequest, request: Request,
                       admin: str = Depends(verify_admin_token)):
-    conn = get_connection()
-    cur = conn.cursor()
-
     updates = []
     params = []
     for field in ["name", "email", "plan", "status"]:
@@ -330,10 +359,18 @@ async def update_user(user_id: str, data: UserUpdateRequest, request: Request,
     updates.append("updated_at = NOW()")
     params.append(user_id)
 
-    cur.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = %s", params)
-    conn.commit()
-    cur.close()
-    conn.close()
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = %s", params)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"update_user error: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao atualizar usuario.")
+    finally:
+        cur.close()
+        conn.close()
 
     log_action(admin, "update_user", "user", user_id, data.dict(exclude_none=True),
                request.client.host if request.client else None)
@@ -342,12 +379,28 @@ async def update_user(user_id: str, data: UserUpdateRequest, request: Request,
 
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str, request: Request, admin: str = Depends(verify_admin_token)):
+    # Soft delete only (LGPD / SECURITY_CHECKLIST): never hard-delete a user, which
+    # would cascade-destroy their charts/credits and FK-error on purchase history.
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        cur.execute(
+            "UPDATE users SET status = 'deleted', updated_at = NOW() WHERE id = %s",
+            (user_id,),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        print(f"delete_user error: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao remover usuario.")
+    finally:
+        cur.close()
+        conn.close()
     log_action(admin, "delete_user", "user", user_id, ip=request.client.host if request.client else None)
     return {"success": True}
 
@@ -376,42 +429,54 @@ class CreditRequest(BaseModel):
 @router.post("/users/{user_id}/credits")
 async def manage_credits(user_id: str, data: CreditRequest, request: Request,
                          admin: str = Depends(verify_admin_token)):
+    if data.type not in ("add", "remove"):
+        raise HTTPException(status_code=400, detail="Tipo invalido. Use 'add' ou 'remove'.")
+    if data.amount is None or data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Quantidade deve ser maior que zero.")
+
     conn = get_connection()
     cur = conn.cursor()
 
-    amount = data.amount if data.type == "add" else -data.amount
+    signed = data.amount if data.type == "add" else -data.amount
 
-    # Ensure user_credits row exists
-    cur.execute("""
-        INSERT INTO user_credits (user_id, credits_balance, total_purchased, total_used)
-        VALUES (%s, 0, 0, 0)
-        ON CONFLICT (user_id) DO NOTHING
-    """, (user_id,))
-
-    if data.type == "add":
+    try:
+        # Ensure user_credits row exists
         cur.execute("""
-            UPDATE user_credits SET credits_balance = credits_balance + %s,
-                                    total_purchased = total_purchased + %s,
-                                    updated_at = NOW()
-            WHERE user_id = %s
-        """, (data.amount, data.amount, user_id))
-    else:
+            INSERT INTO user_credits (user_id, credits_balance, total_purchased, total_used)
+            VALUES (%s, 0, 0, 0)
+            ON CONFLICT (user_id) DO NOTHING
+        """, (user_id,))
+
+        if data.type == "add":
+            # Courtesy/manual grant: only the balance changes. It is NOT a purchase,
+            # so total_purchased (the "sold" metric) must not be inflated.
+            cur.execute("""
+                UPDATE user_credits SET credits_balance = credits_balance + %s,
+                                        updated_at = NOW()
+                WHERE user_id = %s
+            """, (data.amount, user_id))
+        else:
+            # Manual removal/clawback: guarded decrement, not counted as consumption.
+            cur.execute("""
+                UPDATE user_credits SET credits_balance = GREATEST(credits_balance - %s, 0),
+                                        updated_at = NOW()
+                WHERE user_id = %s
+            """, (data.amount, user_id))
+
         cur.execute("""
-            UPDATE user_credits SET credits_balance = GREATEST(credits_balance - %s, 0),
-                                    total_used = total_used + %s,
-                                    updated_at = NOW()
-            WHERE user_id = %s
-        """, (data.amount, data.amount, user_id))
+            INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (user_id, "manual_add" if data.type == "add" else "manual_remove", signed,
+              f"{data.reason} (admin: {admin})", admin))
 
-    cur.execute("""
-        INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (user_id, "manual_add" if data.type == "add" else "manual_remove", amount,
-          f"{data.reason} (admin: {admin})", admin))
-
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"manage_credits error: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao ajustar creditos.")
+    finally:
+        cur.close()
+        conn.close()
 
     log_action(admin, "manage_credits", "user", user_id,
                {"type": data.type, "amount": data.amount, "reason": data.reason},
@@ -634,7 +699,7 @@ async def list_transactions(page: int = 1, limit: int = 20, status: str = "",
                             admin: str = Depends(verify_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
 
     where = "WHERE p.status = %s" if status else ""
     params = [status] if status else []
@@ -709,7 +774,7 @@ async def list_charts(page: int = 1, limit: int = 20,
                       admin: str = Depends(verify_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
 
     cur.execute("""
         SELECT c.*, u.name as user_name, u.email as user_email
@@ -740,7 +805,7 @@ async def list_generations(page: int = 1, limit: int = 20,
     """List ALL chart generations (including non-saved, anonymous)."""
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
 
     cur.execute("""
         SELECT cg.*, u.name as user_name, u.email as user_email
@@ -821,7 +886,7 @@ async def get_logs(page: int = 1, limit: int = 50, action: str = "",
                    admin: str = Depends(verify_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
 
     where = "WHERE action ILIKE %s" if action else ""
     params = [f"%{action}%"] if action else []
@@ -892,32 +957,53 @@ async def refund_transaction(purchase_id: str, data: RefundRequest, request: Req
             print(f"Stripe refund error: {e}")
             raise HTTPException(status_code=500, detail="Erro ao processar estorno no Stripe.")
 
-    # Update purchase status
-    cur.execute("UPDATE purchases SET status = 'refunded' WHERE id = %s", (purchase_id,))
+    try:
+        # Update purchase status
+        cur.execute("UPDATE purchases SET status = 'refunded' WHERE id = %s", (purchase_id,))
 
-    # Remove credits that were added
-    if purchase.get("user_id"):
+        # Reverse the exact credits that were granted for THIS purchase (not a
+        # hard-coded 1). The grant was recorded by _fulfill_purchase as a
+        # 'purchase' credit_transaction keyed on the Stripe session id.
+        if purchase.get("user_id"):
+            uid = str(purchase["user_id"])
+            granted = 0
+            if purchase.get("stripe_payment_id"):
+                cur.execute("""
+                    SELECT COALESCE(SUM(amount), 0) as granted
+                    FROM credit_transactions
+                    WHERE reference_id = %s AND user_id = %s AND type = 'purchase'
+                """, (purchase["stripe_payment_id"], uid))
+                granted = cur.fetchone()["granted"] or 0
+
+            if granted > 0:
+                cur.execute("""
+                    UPDATE user_credits
+                    SET credits_balance = GREATEST(credits_balance - %s, 0),
+                        total_purchased = GREATEST(total_purchased - %s, 0),
+                        updated_at = NOW()
+                    WHERE user_id = %s
+                """, (granted, granted, uid))
+
+                cur.execute("""
+                    INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
+                    VALUES (%s, 'refund', %s, %s, %s)
+                """, (uid, -granted, f"Reembolso: {data.reason}", stripe_refund_id))
+
+        # Record refund
         cur.execute("""
-            UPDATE user_credits SET credits_balance = GREATEST(credits_balance - 1, 0),
-                                    updated_at = NOW()
-            WHERE user_id = %s
-        """, (str(purchase["user_id"]),))
+            INSERT INTO refunds (purchase_id, user_id, admin_email, amount_cents, reason, stripe_refund_id, status)
+            VALUES (%s, %s, %s, %s, %s, %s, 'completed')
+        """, (purchase_id, str(purchase["user_id"]) if purchase.get("user_id") else None,
+              admin, purchase.get("amount_cents", 0), data.reason, stripe_refund_id))
 
-        cur.execute("""
-            INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
-            VALUES (%s, 'refund', -1, %s, %s)
-        """, (str(purchase["user_id"]), f"Reembolso: {data.reason}", stripe_refund_id))
-
-    # Record refund
-    cur.execute("""
-        INSERT INTO refunds (purchase_id, user_id, admin_email, amount_cents, reason, stripe_refund_id, status)
-        VALUES (%s, %s, %s, %s, %s, %s, 'completed')
-    """, (purchase_id, str(purchase["user_id"]) if purchase.get("user_id") else None,
-          admin, purchase.get("amount_cents", 0), data.reason, stripe_refund_id))
-
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Refund DB error for purchase {purchase_id}: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao registrar o estorno.")
+    finally:
+        cur.close()
+        conn.close()
 
     # Send refund email to user
     if purchase.get("user_email"):
@@ -939,7 +1025,7 @@ async def refund_transaction(purchase_id: str, data: RefundRequest, request: Req
 async def list_refunds(page: int = 1, limit: int = 20, admin: str = Depends(verify_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
 
     cur.execute("""
         SELECT r.*, u.name as user_name, u.email as user_email
@@ -971,7 +1057,7 @@ async def admin_list_tickets(page: int = 1, limit: int = 20, status: str = "",
                              admin: str = Depends(verify_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
 
     where = "WHERE t.status = %s" if status else ""
     params = [status] if status else []
@@ -1176,15 +1262,19 @@ async def financial_report(
     total_refund_count = cur.fetchone()["total"]
     refund_rate = (total_refund_count / total_purchases * 100) if total_purchases > 0 else 0
 
-    # Top products
+    # Top products — group by product_type (not a JOIN on the non-unique type
+    # column, which multiplied every purchase by the number of matching products
+    # and inflated revenue). One representative product name is resolved per type.
     cur.execute(f"""
-        SELECT COALESCE(pr.name, p.product_type) as name,
+        SELECT COALESCE(
+                   (SELECT name FROM products WHERE type = p.product_type
+                    ORDER BY created_at ASC LIMIT 1),
+                   p.product_type) as name,
                COUNT(p.id) as sales,
                COALESCE(SUM(p.amount_cents), 0) as revenue
         FROM purchases p
-        LEFT JOIN products pr ON pr.type = p.product_type
         WHERE p.status = 'completed' {date_filter_p}
-        GROUP BY COALESCE(pr.name, p.product_type)
+        GROUP BY p.product_type
         ORDER BY revenue DESC
         LIMIT 10
     """, date_params_p)
@@ -1212,7 +1302,7 @@ async def financial_report(
 async def list_emails(page: int = 1, limit: int = 20, admin: str = Depends(verify_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
     cur.execute("SELECT * FROM email_logs ORDER BY created_at DESC LIMIT %s OFFSET %s", (limit, offset))
     emails = cur.fetchall()
     cur.execute("SELECT COUNT(*) as total FROM email_logs")
@@ -1234,7 +1324,7 @@ async def list_instagram_posts(page: int = 1, limit: int = 20,
                                admin: str = Depends(verify_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
-    offset = (page - 1) * limit
+    page, limit, offset = _clamp_pagination(page, limit)
     cur.execute("""
         SELECT * FROM instagram_posts ORDER BY post_date DESC LIMIT %s OFFSET %s
     """, (limit, offset))
@@ -1280,7 +1370,8 @@ async def trigger_instagram_post(request: Request, admin: str = Depends(verify_a
         from services.daily_post_orchestrator import run_daily_instagram_post
         result = run_daily_instagram_post(target)
     except Exception as e:
-        result = {"status": "failed", "error": str(e)}
+        print(f"trigger_instagram_post error: {e}")
+        result = {"status": "failed", "error": "Falha ao gerar o post. Verifique os logs."}
 
     log_action(admin, "trigger_instagram_post", "instagram", target_str,
                result, ip=request.client.host if request.client else None)
@@ -1296,10 +1387,10 @@ async def test_instagram_credentials(admin: str = Depends(verify_admin_token)):
     token = os.getenv("META_ACCESS_TOKEN") or os.getenv("META_ACESS_TOKEN")
     backend_url = os.getenv("BACKEND_URL", "https://astrara-production.up.railway.app")
 
+    # Do not expose token/credential fragments or infra details to the client.
     results = {
-        "instagram_account_id": ig_id[:6] + "..." if ig_id else "NOT SET",
-        "meta_token": token[:10] + "..." if token else "NOT SET",
-        "backend_url": backend_url,
+        "instagram_account_id_configured": bool(ig_id),
+        "meta_token_configured": bool(token),
     }
 
     if ig_id and token:
@@ -1307,15 +1398,17 @@ async def test_instagram_credentials(admin: str = Depends(verify_admin_token)):
             r = req.get(f"https://graph.facebook.com/v21.0/{ig_id}?fields=username,name&access_token={token}", timeout=10)
             data = r.json()
             if "error" in data:
+                print(f"instagram/test API error: {data.get('error')}")
                 results["status"] = "error"
-                results["error"] = data["error"].get("message", str(data["error"]))
+                results["error"] = "Credenciais invalidas ou expiradas."
             else:
                 results["status"] = "ok"
                 results["instagram_username"] = data.get("username", "")
                 results["instagram_name"] = data.get("name", "")
         except Exception as e:
+            print(f"instagram/test error: {e}")
             results["status"] = "error"
-            results["error"] = str(e)
+            results["error"] = "Falha ao contatar a API do Instagram."
     else:
         results["status"] = "missing_credentials"
 
@@ -1378,7 +1471,8 @@ async def recover_pending_purchases(request: Request, admin: str = Depends(verif
                 recovered += 1
                 print(f"[Recovery] Fulfilled purchase {session_id} for user {user_id}, credits: {credits}")
         except Exception as e:
-            errors.append({"session_id": session_id, "error": str(e)})
+            print(f"[Recovery] Error on session {session_id}: {e}")
+            errors.append({"session_id": session_id, "error": "verification_failed"})
 
     log_action(admin, "recover_pending_purchases", "purchase", "",
                {"recovered": recovered, "total_pending": len(pending), "errors": errors},
