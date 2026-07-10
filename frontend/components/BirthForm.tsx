@@ -65,7 +65,7 @@ export default function BirthForm({ onSubmit, loading }: Props) {
   const [showCityDropdown, setShowCityDropdown] = useState(false)
   const [searchingCity, setSearchingCity] = useState(false)
   const cityRef = useRef<HTMLDivElement>(null)
-  const debounceRef = useRef<NodeJS.Timeout>()
+  const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
   // Close dropdown on outside click
   useEffect(() => {
