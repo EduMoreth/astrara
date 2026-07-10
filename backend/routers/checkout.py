@@ -152,20 +152,42 @@ async def create_checkout(data: CheckoutCreateRequest,
 
 @router.get("/verify/{session_id}")
 async def verify_checkout(session_id: str, authorization: Optional[str] = Header(None)):
-    """Verify payment and add credits. Idempotent — safe to call multiple times."""
-    user = get_current_user(authorization)
+    """Verify payment and add credits. Idempotent — safe to call multiple times.
 
-    result = verify_payment(session_id)
+    Fulfillment uses the user_id stored in the Stripe session metadata (set at
+    creation), so it works even when the caller's auth token is missing — e.g. the
+    post-payment redirect landing on a different subdomain (apex vs www) where
+    localStorage isn't shared. The session_id is a Stripe-issued secret tied to the
+    payment, so this is safe and cannot grant credits to an arbitrary user.
+    """
+    try:
+        result = verify_payment(session_id)
+    except Exception as e:
+        print(f"Verify payment error for {session_id}: {e}")
+        raise HTTPException(status_code=502, detail="Nao foi possivel verificar o pagamento.")
 
-    if result["status"] == "paid":
-        credits_added = _fulfill_purchase(
-            session_id=session_id,
-            user_id=user["sub"],
-            product_id=result.get("product_id", ""),
-        )
-        return {"success": True, "credits_added": credits_added}
+    if result["status"] != "paid":
+        return {"success": False, "status": result["status"]}
 
-    return {"success": False, "status": result["status"]}
+    # Authoritative user is the one recorded in the session metadata at creation.
+    user_id = result.get("user_id")
+
+    # Fall back to the authenticated caller only if metadata is somehow absent.
+    if not user_id and authorization and authorization.startswith("Bearer "):
+        try:
+            user_id = verify_token(authorization.replace("Bearer ", ""))["sub"]
+        except Exception:
+            user_id = None
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Pagamento sem usuario associado.")
+
+    credits_added = _fulfill_purchase(
+        session_id=session_id,
+        user_id=user_id,
+        product_id=result.get("product_id", ""),
+    )
+    return {"success": True, "credits_added": credits_added}
 
 
 @router.post("/webhook")
