@@ -71,7 +71,7 @@ export default function DashboardPage() {
 
     fetch(`${API_URL}/user/credits`, { headers: getHeaders() })
       .then(r => r.json())
-      .then(data => setCredits(data.credits ?? data.balance ?? 0))
+      .then(data => setCredits(data.credits_balance ?? data.credits ?? 0))
       .catch(() => {})
   }
 
