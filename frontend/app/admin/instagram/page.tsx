@@ -274,8 +274,8 @@ export default function AdminInstagramPage() {
                     </button>
                   </div>
                   {p.error_message && (
-                    <span className="text-[#E74C3C] text-[10px] block mt-1" title={p.error_message}>
-                      Erro: {p.error_message.slice(0, 40)}...
+                    <span className="text-[#E74C3C] text-[10px] block mt-1 max-w-[420px] whitespace-normal break-words">
+                      Erro: {p.error_message}
                     </span>
                   )}
                 </td>
