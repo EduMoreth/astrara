@@ -948,15 +948,34 @@ async def refund_transaction(purchase_id: str, data: RefundRequest, request: Req
         conn.close()
         raise HTTPException(status_code=400, detail="Transacao ja foi reembolsada")
 
-    # Refund via Stripe
+    # Only COMPLETED purchases can be refunded. Refunding a 'pending' one used to
+    # record a phantom refund (no Stripe charge behind it), corrupting the
+    # financial report (revenue 0, refund > 0, negative net).
+    if purchase["status"] != "completed":
+        cur.close()
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail="Apenas compras concluidas podem ser estornadas. Compras pendentes nao foram cobradas (use 'Recuperar pendentes' se o pagamento existir no Stripe).",
+        )
+
+    # Refund via Stripe — there must be a real charge to refund
     stripe_refund_id = None
     if purchase.get("stripe_payment_id"):
         try:
             # Get payment intent from checkout session
             session = stripe.checkout.Session.retrieve(purchase["stripe_payment_id"])
-            if session.payment_intent:
-                refund = stripe.Refund.create(payment_intent=session.payment_intent, reason="requested_by_customer")
-                stripe_refund_id = refund.id
+            if not session.payment_intent:
+                cur.close()
+                conn.close()
+                raise HTTPException(
+                    status_code=400,
+                    detail="Esta compra nao tem pagamento no Stripe para estornar.",
+                )
+            refund = stripe.Refund.create(payment_intent=session.payment_intent, reason="requested_by_customer")
+            stripe_refund_id = refund.id
+        except HTTPException:
+            raise
         except Exception as e:
             cur.close()
             conn.close()
@@ -1389,8 +1408,9 @@ async def trigger_instagram_post(request: Request, admin: str = Depends(verify_a
 async def test_instagram_credentials(admin: str = Depends(verify_admin_token)):
     """Test if Instagram credentials are valid."""
     import requests as req
+    from services.instagram_service import get_access_token
     ig_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
-    token = os.getenv("META_ACCESS_TOKEN") or os.getenv("META_ACESS_TOKEN")
+    token = get_access_token()
     backend_url = os.getenv("BACKEND_URL", "https://astrara-production.up.railway.app")
 
     # Do not expose token/credential fragments or infra details to the client.
@@ -1432,6 +1452,130 @@ async def get_instagram_post(post_date: str, admin: str = Depends(verify_admin_t
     if not post:
         raise HTTPException(status_code=404, detail="Post nao encontrado")
     return {**post, "id": str(post["id"]), "post_date": str(post["post_date"])}
+
+
+class MetaTokenRequest(BaseModel):
+    token: str
+
+
+@router.post("/instagram/set-token")
+async def set_meta_token(data: MetaTokenRequest, request: Request,
+                         admin: str = Depends(verify_admin_token)):
+    """Save a new Meta/Instagram access token (renew from the admin panel,
+    no redeploy needed). Validates it against the Graph API before saving."""
+    token = data.token.strip()
+    if len(token) < 20:
+        raise HTTPException(status_code=400, detail="Token invalido.")
+
+    import requests as req
+    ig_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
+    if ig_id:
+        try:
+            r = req.get(
+                f"https://graph.facebook.com/v21.0/{ig_id}",
+                params={"fields": "username", "access_token": token},
+                timeout=15,
+            )
+            if "error" in r.json():
+                raise HTTPException(status_code=400, detail="O token informado foi recusado pela Meta.")
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"set-token validation error: {e}")
+            raise HTTPException(status_code=502, detail="Falha ao validar o token na Meta.")
+
+    from services.instagram_service import save_access_token
+    try:
+        save_access_token(token)
+    except Exception as e:
+        print(f"set-token save error: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao salvar o token.")
+
+    log_action(admin, "set_meta_token", "config", "meta_access_token", None,
+               request.client.host if request.client else None)
+    return {"success": True, "message": "Token salvo e validado."}
+
+
+@router.post("/instagram/refresh-token")
+async def refresh_meta_token_endpoint(request: Request,
+                                      admin: str = Depends(verify_admin_token)):
+    """Exchange the current Meta token for a fresh long-lived one (~60 days)."""
+    from services.instagram_service import refresh_meta_token
+    result = refresh_meta_token()
+    log_action(admin, "refresh_meta_token", "config", "meta_access_token",
+               {"success": result.get("success", False)},
+               request.client.host if request.client else None)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Falha ao renovar token."))
+    return {"success": True, "expires_in": result.get("expires_in")}
+
+
+@router.get("/twitter/test")
+async def test_twitter_credentials(admin: str = Depends(verify_admin_token)):
+    """Test if X (Twitter) credentials are valid."""
+    keys_configured = all([
+        os.getenv("TWITTER_API_KEY"), os.getenv("TWITTER_API_SECRET"),
+        os.getenv("TWITTER_ACCESS_TOKEN"), os.getenv("TWITTER_ACCESS_SECRET"),
+    ])
+    results = {"twitter_keys_configured": keys_configured}
+    if not keys_configured:
+        results["status"] = "missing_credentials"
+        return results
+    try:
+        from services.twitter_service import _get_client
+        me = _get_client().get_me()
+        results["status"] = "ok"
+        results["twitter_username"] = getattr(me.data, "username", "")
+    except Exception as e:
+        print(f"twitter/test error: {e}")
+        results["status"] = "error"
+        results["error"] = "Credenciais invalidas ou sem permissao de escrita."
+    return results
+
+
+@router.post("/refunds/cleanup-phantom")
+async def cleanup_phantom_refunds(request: Request, admin: str = Depends(verify_admin_token)):
+    """Remove phantom refunds: rows recorded WITHOUT a Stripe refund id (nothing
+    was actually returned at Stripe). Restores the linked purchase to 'pending'
+    so it can be reconciled via recover-pending. Reports affected users so any
+    manually-removed credits can be reviewed."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT r.id, r.purchase_id, r.user_id, r.amount_cents
+            FROM refunds r
+            WHERE r.stripe_refund_id IS NULL AND r.status = 'completed'
+        """)
+        phantoms = cur.fetchall()
+
+        cleaned = []
+        for ph in phantoms:
+            if ph.get("purchase_id"):
+                cur.execute(
+                    "UPDATE purchases SET status = 'pending' WHERE id = %s AND status = 'refunded'",
+                    (str(ph["purchase_id"]),),
+                )
+            cur.execute("DELETE FROM refunds WHERE id = %s", (str(ph["id"]),))
+            cleaned.append({
+                "refund_id": str(ph["id"]),
+                "purchase_id": str(ph["purchase_id"]) if ph.get("purchase_id") else None,
+                "user_id": str(ph["user_id"]) if ph.get("user_id") else None,
+                "amount_cents": ph.get("amount_cents", 0),
+            })
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"cleanup_phantom_refunds error: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao limpar estornos fantasma.")
+    finally:
+        cur.close()
+        conn.close()
+
+    log_action(admin, "cleanup_phantom_refunds", "refund", "",
+               {"cleaned": len(cleaned)},
+               request.client.host if request.client else None)
+    return {"success": True, "cleaned": len(cleaned), "details": cleaned}
 
 
 @router.post("/purchases/recover-pending")

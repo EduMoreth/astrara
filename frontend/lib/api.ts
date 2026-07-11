@@ -18,6 +18,8 @@ export interface ChartResponse {
   >
   houses: Array<{ sign: string; deg: number }>
   aspects: Array<{ p1: string; p2: string; aspect: string; orbit: number }>
+  // Birth form snapshot embedded at generation time so saves always carry it
+  form?: Record<string, unknown>
 }
 
 interface AuthResponse {

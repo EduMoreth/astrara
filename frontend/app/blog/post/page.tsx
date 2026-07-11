@@ -95,6 +95,20 @@ function BlogPostContent() {
         {post.category ? (
           <span className="text-xs text-gold bg-gold/10 px-2 py-0.5 rounded-full">{String(post.category)}</span>
         ) : null}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'Article',
+              headline: String(post.title || ''),
+              datePublished: post.published_at || undefined,
+              inLanguage: 'pt-BR',
+              publisher: { '@type': 'Organization', name: 'Astrara', url: 'https://www.astrara.online' },
+              mainEntityOfPage: typeof window !== 'undefined' ? window.location.href : undefined,
+            }),
+          }}
+        />
         <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl text-stardust mt-4 mb-4 leading-tight">
           {post.title as string}
         </h1>

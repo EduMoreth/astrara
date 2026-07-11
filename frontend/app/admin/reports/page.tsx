@@ -58,6 +58,34 @@ export default function AdminReportsPage() {
 
   useEffect(() => { loadReport() }, [loadReport])
 
+  const [reconciling, setReconciling] = useState(false)
+
+  async function runReconciliation() {
+    setReconciling(true)
+    try {
+      // 1) Remove phantom refunds (recorded without any Stripe refund behind them)
+      const r1 = await fetch(`${API_URL}/admin/api/refunds/cleanup-phantom`, {
+        method: 'POST', headers: getAdminHeaders(),
+      })
+      const d1 = r1.ok ? await r1.json() : { cleaned: 0 }
+      // 2) Verify every pending purchase against Stripe and fulfill the paid ones
+      const r2 = await fetch(`${API_URL}/admin/api/purchases/recover-pending`, {
+        method: 'POST', headers: getAdminHeaders(),
+      })
+      const d2 = r2.ok ? await r2.json() : null
+      if (!r1.ok && !r2.ok) throw new Error('failed')
+      toast.success(
+        `Reconciliacao concluida: ${d1.cleaned ?? 0} estorno(s) fantasma removido(s), ` +
+        `${d2?.recovered ?? 0} de ${d2?.total_pending ?? 0} compra(s) pendente(s) confirmada(s) no Stripe.`
+      )
+      loadReport()
+    } catch {
+      toast.error('Erro ao reconciliar com o Stripe. Tente novamente.')
+    } finally {
+      setReconciling(false)
+    }
+  }
+
   function applyPreset(preset: typeof PRESETS[0]) {
     setDateFrom(preset.from())
     setDateTo(preset.to())
@@ -70,7 +98,14 @@ export default function AdminReportsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="font-display text-2xl text-stardust">Relatorio Financeiro</h2>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="font-display text-2xl text-stardust">Relatorio Financeiro</h2>
+        <button onClick={runReconciliation} disabled={reconciling}
+          className="btn-secondary text-xs disabled:opacity-50"
+          title="Confere as compras pendentes no Stripe, confirma as pagas e remove estornos fantasma">
+          {reconciling ? 'Reconciliando...' : 'Reconciliar com Stripe'}
+        </button>
+      </div>
 
       {/* Date range filter */}
       <div className="glass-card p-4">

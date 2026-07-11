@@ -1,0 +1,36 @@
+# Astrara — O cosmos, decifrado.
+
+> Astrara (https://www.astrara.online) e uma plataforma brasileira de astrologia
+> que calcula mapas astrais (mapa natal) gratuitamente com precisao profissional
+> baseada em efemerides suicas, e oferece interpretacoes profundas geradas por
+> inteligencia artificial e analises de compatibilidade de casal (sinastria).
+
+## O que a Astrara oferece
+
+- Mapa astral gratuito: posicoes de todos os planetas, casas astrologicas,
+  ascendente, meio do ceu e aspectos, com mandala visual para download.
+  URL: https://www.astrara.online/chart
+- Interpretacao completa do mapa natal por IA (produto pago, PDF personalizado):
+  analise de cada planeta, casa e aspecto.
+- Sinastria (compatibilidade de casal, produto premium): dois mapas astrais,
+  aspectos entre os mapas, indices de afinidade em 6 dimensoes (amor, conexao
+  emocional, comunicacao, identidade, estabilidade, transformacao) e analise
+  completa por IA em PDF. URL: https://www.astrara.online/sinastria
+- Blog com artigos sobre astrologia, signos, planetas e autoconhecimento:
+  https://www.astrara.online/blog
+
+## Como funciona
+
+O usuario informa nome, data, hora e cidade de nascimento. O sistema geocodifica
+a cidade, calcula o mapa com precisao astronomica (Kerykeion/Swiss Ephemeris) e
+renderiza a mandala. As interpretacoes sao geradas por modelos Claude da
+Anthropic, em portugues do Brasil.
+
+## Publico e idioma
+
+Conteudo em portugues do Brasil (pt-BR). Publico: interessados em astrologia,
+autoconhecimento e relacionamentos.
+
+## Contato
+
+Suporte: suporte@astrara.online

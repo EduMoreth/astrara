@@ -48,6 +48,43 @@ export default function AdminInstagramPage() {
       .catch(() => toast.error('Erro ao carregar posts'))
   }, [])
 
+  const [newToken, setNewToken] = useState('')
+  const [savingToken, setSavingToken] = useState(false)
+
+  async function handleSaveToken() {
+    if (newToken.trim().length < 20) { toast.error('Cole um token valido da Meta.'); return }
+    setSavingToken(true)
+    try {
+      const res = await fetch(`${API_URL}/admin/api/instagram/set-token`, {
+        method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({ token: newToken.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) { toast.success('Token salvo e validado na Meta!'); setNewToken('') }
+      else toast.error(typeof data.detail === 'string' ? data.detail : 'Erro ao salvar token')
+    } catch { toast.error('Erro de conexao') } finally { setSavingToken(false) }
+  }
+
+  async function handleRefreshToken() {
+    try {
+      const res = await fetch(`${API_URL}/admin/api/instagram/refresh-token`, {
+        method: 'POST', headers: getAdminHeaders(),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) toast.success('Token renovado por mais ~60 dias!')
+      else toast.error(typeof data.detail === 'string' ? data.detail : 'Erro ao renovar token')
+    } catch { toast.error('Erro de conexao') }
+  }
+
+  async function handleTestTwitter() {
+    try {
+      const res = await fetch(`${API_URL}/admin/api/twitter/test`, { headers: getAdminHeaders() })
+      const data = await res.json()
+      if (data.status === 'ok') toast.success(`Credenciais do X OK! @${data.twitter_username}`)
+      else if (data.status === 'error') toast.error(`X: ${data.error}`)
+      else toast.error('Credenciais do X nao configuradas no Railway.')
+    } catch { toast.error('Erro ao testar X') }
+  }
+
   async function handleTrigger() {
     setTriggering(true)
     toast.info('Gerando conteudo com IA + imagem... isso pode levar ate 2 minutos.')
@@ -143,6 +180,26 @@ export default function AdminInstagramPage() {
         >
           Testar credenciais do Instagram
         </button>
+        <button onClick={handleTestTwitter} className="text-muted hover:text-gold text-xs mt-2 underline ml-4">
+          Testar credenciais do X (Twitter)
+        </button>
+
+        {/* Meta token renewal — no redeploy needed */}
+        <div className="mt-5 pt-4 border-t border-gold/10">
+          <p className="text-muted text-xs mb-2">
+            Token da Meta expirado (erro 190)? Gere um novo token de longa duracao e cole aqui —
+            passa a valer imediatamente, sem redeploy. Com META_APP_ID/META_APP_SECRET configurados,
+            o sistema renova sozinho toda semana.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <input value={newToken} onChange={e => setNewToken(e.target.value)}
+              placeholder="Colar novo token Meta (EAAG...)" className="input-field flex-1 min-w-[260px] text-xs" />
+            <button onClick={handleSaveToken} disabled={savingToken} className="btn-primary text-xs disabled:opacity-50">
+              {savingToken ? 'Validando...' : 'Salvar token'}
+            </button>
+            <button onClick={handleRefreshToken} className="btn-secondary text-xs">Renovar automaticamente</button>
+          </div>
+        </div>
       </div>
 
       {/* Posts table */}
