@@ -351,6 +351,9 @@ export default function ChartPage() {
           Astrara
         </Link>
         <div className="flex items-center gap-4">
+          <Link href="/sinastria" className="text-muted hover:text-stardust transition-colors text-sm">
+            Sinastria
+          </Link>
           {isLoggedIn ? (
             <Link href="/dashboard" className="text-muted hover:text-stardust transition-colors text-sm">
               Meus mapas

@@ -34,6 +34,9 @@ export default function LoginPage() {
       if (intent === 'buy_interpretation') {
         sessionStorage.removeItem('astrara_intent')
         router.push('/chart')
+      } else if (intent === 'buy_sinastria') {
+        sessionStorage.removeItem('astrara_intent')
+        router.push('/sinastria')
       } else {
         router.push('/dashboard')
       }

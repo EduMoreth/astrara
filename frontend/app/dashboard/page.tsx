@@ -119,6 +119,7 @@ export default function DashboardPage() {
       <header className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5 max-w-7xl mx-auto">
         <Link href="/" className="font-display text-xl sm:text-2xl font-semibold text-gradient-gold">Astrara</Link>
         <div className="flex items-center gap-2 sm:gap-5">
+          <Link href="/sinastria" className="text-muted hover:text-stardust text-xs sm:text-sm hidden sm:inline">Sinastria</Link>
           <Link href="/conta" className="text-muted hover:text-stardust text-xs sm:text-sm hidden sm:inline">Minha conta</Link>
           <Link href="/support" className="text-muted hover:text-stardust text-xs sm:text-sm hidden sm:inline">Suporte</Link>
           <span className="text-stardust text-xs sm:text-sm truncate max-w-[100px] sm:max-w-none">{user.name}</span>

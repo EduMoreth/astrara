@@ -87,9 +87,14 @@ export default function LandingPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.7 }}
         >
-          <Link href="/chart" className="btn-primary mt-10 text-lg">
-            Descobrir meu mapa &rarr;
-          </Link>
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link href="/chart" className="btn-primary text-lg">
+              Descobrir meu mapa &rarr;
+            </Link>
+            <Link href="/sinastria" className="btn-secondary text-lg">
+              Sinastria de casal &hearts;
+            </Link>
+          </div>
         </motion.div>
 
         {/* Mandala preview rotating */}
