@@ -26,6 +26,22 @@ def start_scheduler():
     except Exception as e:
         logger.error(f"Failed to schedule social media: {e}")
 
+    # Weekly Meta token refresh (long-lived tokens expire in ~60 days).
+    # Only effective when META_APP_ID/META_APP_SECRET are configured.
+    try:
+        from services.instagram_service import refresh_meta_token
+        scheduler.add_job(
+            func=refresh_meta_token,
+            trigger=CronTrigger(day_of_week="sun", hour=5, minute=17, timezone=BRT),
+            id="meta_token_refresh",
+            name="Renovacao semanal do token Meta",
+            replace_existing=True,
+            misfire_grace_time=7200,
+        )
+        logger.info("Scheduled: Meta token refresh weekly on Sundays 5:17 BRT")
+    except Exception as e:
+        logger.error(f"Failed to schedule meta token refresh: {e}")
+
     # Weekly newsletter on Mondays at 8:00 AM BRT
     try:
         from services.newsletter_service import send_weekly_newsletter

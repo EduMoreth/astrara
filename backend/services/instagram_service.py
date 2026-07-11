@@ -4,8 +4,74 @@ import base64
 import time
 
 INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
-ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN") or os.getenv("META_ACESS_TOKEN")
 GRAPH_URL = "https://graph.facebook.com/v21.0"
+
+
+def get_access_token() -> str:
+    """Meta access token. Prefers system_config (renewable from the admin panel
+    without a redeploy); falls back to the env var. Long-lived tokens expire in
+    ~60 days — see refresh_meta_token()."""
+    try:
+        from database import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM system_config WHERE key = 'meta_access_token'")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row and (row.get("value") or "").strip():
+            return row["value"].strip()
+    except Exception as e:
+        print(f"meta token config read error: {e}")
+    return os.getenv("META_ACCESS_TOKEN") or os.getenv("META_ACESS_TOKEN") or ""
+
+
+def save_access_token(token: str) -> None:
+    """Persist the Meta token in system_config (used by admin panel + refresh)."""
+    from database import get_connection
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO system_config (key, value, description)
+        VALUES ('meta_access_token', %s, 'Token de acesso Meta/Instagram (renovavel)')
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    """, (token,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def refresh_meta_token() -> dict:
+    """Exchange the current long-lived token for a fresh one (extends the ~60-day
+    expiry). Requires META_APP_ID + META_APP_SECRET. Persists to system_config."""
+    app_id = os.getenv("META_APP_ID", "")
+    app_secret = os.getenv("META_APP_SECRET", "")
+    current = get_access_token()
+    if not app_id or not app_secret:
+        return {"success": False, "error": "META_APP_ID/META_APP_SECRET nao configurados"}
+    if not current:
+        return {"success": False, "error": "Nenhum token atual para renovar"}
+    try:
+        resp = requests.get(
+            f"{GRAPH_URL}/oauth/access_token",
+            params={
+                "grant_type": "fb_exchange_token",
+                "client_id": app_id,
+                "client_secret": app_secret,
+                "fb_exchange_token": current,
+            },
+            timeout=30,
+        )
+        data = resp.json()
+        new_token = data.get("access_token")
+        if not new_token:
+            print(f"Meta token refresh failed: {data.get('error')}")
+            return {"success": False, "error": "Meta recusou a renovacao (token pode estar expirado)"}
+        save_access_token(new_token)
+        return {"success": True, "expires_in": data.get("expires_in")}
+    except Exception as e:
+        print(f"Meta token refresh error: {e}")
+        return {"success": False, "error": "Erro de rede ao renovar token"}
 
 
 def _upload_image_to_imgur(image_path: str) -> str:
@@ -45,7 +111,8 @@ def _get_image_public_url(image_path: str) -> str:
 
 def upload_image_to_meta(image_path: str, caption: str) -> str:
     """Step 1: Create media container with image URL."""
-    if not INSTAGRAM_ACCOUNT_ID or not ACCESS_TOKEN:
+    access_token = get_access_token()
+    if not INSTAGRAM_ACCOUNT_ID or not access_token:
         raise Exception("Instagram credentials not configured (INSTAGRAM_ACCOUNT_ID / META_ACCESS_TOKEN)")
 
     image_url = _get_image_public_url(image_path)
@@ -55,7 +122,7 @@ def upload_image_to_meta(image_path: str, caption: str) -> str:
         data={
             "image_url": image_url,
             "caption": caption,
-            "access_token": ACCESS_TOKEN,
+            "access_token": access_token,
         },
         timeout=30,
     )
@@ -73,6 +140,7 @@ def upload_image_to_meta(image_path: str, caption: str) -> str:
 
 
 def publish_media_container(creation_id: str) -> str:
+    access_token = get_access_token()
     """Step 2: Publish the media container.
     May need to wait for Meta to process the image."""
     max_retries = 5
@@ -81,7 +149,7 @@ def publish_media_container(creation_id: str) -> str:
             f"{GRAPH_URL}/{INSTAGRAM_ACCOUNT_ID}/media_publish",
             data={
                 "creation_id": creation_id,
-                "access_token": ACCESS_TOKEN,
+                "access_token": access_token,
             },
             timeout=30,
         )
@@ -103,12 +171,13 @@ def publish_media_container(creation_id: str) -> str:
 
 
 def get_post_permalink(post_id: str) -> str:
+    access_token = get_access_token()
     """Get the permanent link for a published post."""
     response = requests.get(
         f"{GRAPH_URL}/{post_id}",
         params={
             "fields": "permalink",
-            "access_token": ACCESS_TOKEN,
+            "access_token": access_token,
         },
         timeout=15,
     )

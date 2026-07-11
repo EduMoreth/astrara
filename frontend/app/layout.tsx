@@ -15,11 +15,19 @@ const cormorant = Cormorant_Garamond({
   variable: '--font-cormorant',
 })
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover' as const,
+}
+
 export const metadata: Metadata = {
+  metadataBase: new URL('https://www.astrara.online'),
   title: 'Astrara — O cosmos, decifrado.',
-  description: 'Calcule seu mapa astral gratuitamente com precisao profissional. Interpretacoes profundas com inteligencia artificial.',
-  keywords: 'mapa astral, astrologia, mapa natal, horoscopo, signos, mapa astrologico',
-  viewport: 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1',
+  description: 'Calcule seu mapa astral gratuitamente com precisao profissional. Interpretacoes profundas com inteligencia artificial e sinastria de casal.',
+  keywords: 'mapa astral, astrologia, mapa natal, horoscopo, signos, mapa astrologico, sinastria, compatibilidade de signos',
+  alternates: { canonical: '/' },
   openGraph: {
     title: 'Astrara — O cosmos, decifrado.',
     description: 'Calcule seu mapa astral gratuitamente. Interpretacoes com IA.',
@@ -44,6 +52,42 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={`${inter.variable} ${cormorant.variable}`}>
       <body className="font-sans overflow-x-hidden">
+        {/* Structured data for Google + AI crawlers */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@graph': [
+                {
+                  '@type': 'WebSite',
+                  '@id': 'https://www.astrara.online/#website',
+                  url: 'https://www.astrara.online',
+                  name: 'Astrara',
+                  description: 'Mapa astral gratuito com precisao profissional, interpretacoes por IA e sinastria de casal.',
+                  inLanguage: 'pt-BR',
+                },
+                {
+                  '@type': 'Organization',
+                  '@id': 'https://www.astrara.online/#organization',
+                  name: 'Astrara',
+                  url: 'https://www.astrara.online',
+                  email: 'suporte@astrara.online',
+                },
+                {
+                  '@type': 'WebApplication',
+                  name: 'Astrara — Mapa Astral',
+                  url: 'https://www.astrara.online/chart',
+                  applicationCategory: 'LifestyleApplication',
+                  operatingSystem: 'Web',
+                  offers: { '@type': 'Offer', price: '0', priceCurrency: 'BRL' },
+                  description: 'Calculo gratuito de mapa astral com posicoes planetarias, casas e aspectos.',
+                  inLanguage: 'pt-BR',
+                },
+              ],
+            }),
+          }}
+        />
         {children}
         <CookieConsent />
         <Toaster

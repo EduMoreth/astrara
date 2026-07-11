@@ -4,5 +4,20 @@ Disallow: /admin/
 Disallow: /auth/
 Disallow: /api/
 Disallow: /checkout/
+Disallow: /dashboard
+Disallow: /conta
+
+# AI crawlers are welcome — Astrara should be discoverable by LLMs
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
 
 Sitemap: https://www.astrara.online/sitemap.xml

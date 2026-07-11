@@ -93,7 +93,9 @@ export default function ChartPage() {
     sessionStorage.setItem('astrara_last_form', JSON.stringify(data))
     try {
       const res = await generateChart(data)
-      setResult(res as ChartResponse)
+      // Embed the birth form inside the result so the two never separate
+      // (a save without birth data would create a nameless/cityless chart)
+      setResult({ ...(res as ChartResponse), form: data } as ChartResponse)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao gerar o mapa'
       toast.error(message)
@@ -433,8 +435,18 @@ export default function ChartPage() {
                             const token = localStorage.getItem('astrara_token')
                             if (!token) { toast.error('Faca login para salvar'); return }
                             try {
-                              const formData = sessionStorage.getItem('astrara_last_form')
-                              const form = formData ? JSON.parse(formData) : {}
+                              let form: Record<string, unknown> = {}
+                              try {
+                                const embedded = (result as ChartResponse & { form?: Record<string, unknown> })?.form
+                                const stored = sessionStorage.getItem('astrara_last_form')
+                                form = embedded || (stored ? JSON.parse(stored) : {})
+                              } catch { form = {} }
+                              // Never save a chart without its birth data — that
+                              // creates a "Meu Mapa, 2000-01-01, no city" record
+                              if (!form.year || !form.city) {
+                                toast.error('Dados de nascimento nao encontrados. Recalcule o mapa antes de salvar.')
+                                return
+                              }
                               const res = await fetch(`${API_URL}/user/charts/save`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
