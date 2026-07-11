@@ -1411,7 +1411,7 @@ async def trigger_instagram_post(request: Request, admin: str = Depends(verify_a
 async def test_instagram_credentials(admin: str = Depends(verify_admin_token)):
     """Test if Instagram credentials are valid."""
     import requests as req
-    from services.instagram_service import get_access_token
+    from services.instagram_service import get_access_token, is_ig_login_token
     ig_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
     token = get_access_token()
     backend_url = os.getenv("BACKEND_URL", "https://astrara-production.up.railway.app")
@@ -1420,11 +1420,16 @@ async def test_instagram_credentials(admin: str = Depends(verify_admin_token)):
     results = {
         "instagram_account_id_configured": bool(ig_id),
         "meta_token_configured": bool(token),
+        "token_type": "instagram_login" if is_ig_login_token(token) else "facebook_login",
     }
 
-    if ig_id and token:
+    if token and (ig_id or is_ig_login_token(token)):
         try:
-            r = req.get(f"https://graph.facebook.com/v21.0/{ig_id}?fields=username,name&access_token={token}", timeout=10)
+            if is_ig_login_token(token):
+                r = req.get("https://graph.instagram.com/v21.0/me",
+                            params={"fields": "username,name", "access_token": token}, timeout=10)
+            else:
+                r = req.get(f"https://graph.facebook.com/v21.0/{ig_id}?fields=username,name&access_token={token}", timeout=10)
             data = r.json()
             if "error" in data:
                 print(f"instagram/test API error: {data.get('error')}")
@@ -1471,21 +1476,32 @@ async def set_meta_token(data: MetaTokenRequest, request: Request,
         raise HTTPException(status_code=400, detail="Token invalido.")
 
     import requests as req
-    ig_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
-    if ig_id:
-        try:
+    from services.instagram_service import is_ig_login_token
+    try:
+        if is_ig_login_token(token):
+            # New Instagram-login token (IGAA...): validate via graph.instagram.com
             r = req.get(
-                f"https://graph.facebook.com/v21.0/{ig_id}",
+                "https://graph.instagram.com/v21.0/me",
                 params={"fields": "username", "access_token": token},
                 timeout=15,
             )
             if "error" in r.json():
-                raise HTTPException(status_code=400, detail="O token informado foi recusado pela Meta.")
-        except HTTPException:
-            raise
-        except Exception as e:
-            print(f"set-token validation error: {e}")
-            raise HTTPException(status_code=502, detail="Falha ao validar o token na Meta.")
+                raise HTTPException(status_code=400, detail="O token informado foi recusado pelo Instagram.")
+        else:
+            ig_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
+            if ig_id:
+                r = req.get(
+                    f"https://graph.facebook.com/v21.0/{ig_id}",
+                    params={"fields": "username", "access_token": token},
+                    timeout=15,
+                )
+                if "error" in r.json():
+                    raise HTTPException(status_code=400, detail="O token informado foi recusado pela Meta.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"set-token validation error: {e}")
+        raise HTTPException(status_code=502, detail="Falha ao validar o token na Meta.")
 
     from services.instagram_service import save_access_token
     try:
