@@ -16,7 +16,7 @@ function getHeaders() {
 export default function AccountPage() {
   const router = useRouter()
   const [user, setUser] = useState<Record<string, string> | null>(null)
-  const [credits, setCredits] = useState({ credits_balance: 0, total_purchased: 0, total_used: 0 })
+  const [credits, setCredits] = useState({ credits_balance: 0, synastry_credits: 0, total_purchased: 0, total_used: 0 })
   const [editName, setEditName] = useState('')
   const [showDelete, setShowDelete] = useState(false)
   const [deletePassword, setDeletePassword] = useState('')
@@ -56,7 +56,7 @@ export default function AccountPage() {
       .catch((err) => {
         console.error('Credits fetch error:', err)
         // Initialize with zeros if endpoint fails
-        setCredits({ credits_balance: 0, total_purchased: 0, total_used: 0 })
+        setCredits({ credits_balance: 0, synastry_credits: 0, total_purchased: 0, total_used: 0 })
       })
   }, [router])
 
@@ -165,8 +165,9 @@ export default function AccountPage() {
         {/* Credits */}
         <div className="glass-card p-6">
           <h2 className="text-gold text-sm font-medium uppercase tracking-wider mb-4">Creditos</h2>
-          <div className="flex gap-6">
-            <div><span className="text-muted text-xs block">Saldo</span><span className="text-2xl text-gold font-display">{credits.credits_balance}</span></div>
+          <div className="flex gap-6 flex-wrap">
+            <div><span className="text-muted text-xs block">Interpretacao</span><span className="text-2xl text-gold font-display">{credits.credits_balance}</span></div>
+            <div><span className="text-muted text-xs block">Sinastria</span><span className="text-2xl text-violet font-display">{credits.synastry_credits ?? 0}</span></div>
             <div><span className="text-muted text-xs block">Comprados</span><span className="text-lg text-stardust">{credits.total_purchased}</span></div>
             <div><span className="text-muted text-xs block">Usados</span><span className="text-lg text-stardust">{credits.total_used}</span></div>
           </div>

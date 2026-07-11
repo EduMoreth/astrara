@@ -70,24 +70,38 @@ def _fulfill_purchase(session_id: str, user_id: str, product_id: str) -> int:
                 ON CONFLICT DO NOTHING
             """, (user_id, session_id))
 
-        # Get product credits
+        # Get product credits + name. Synastry products deliver a DEDICATED
+        # credit type (synastry_credits) — interpretation credits and synastry
+        # credits are not interchangeable.
         credits_to_add = 0
+        is_synastry = False
         if product_id:
-            cur.execute("SELECT credits FROM products WHERE id = %s", (product_id,))
+            cur.execute("SELECT name, credits FROM products WHERE id = %s", (product_id,))
             product = cur.fetchone()
             if product:
                 credits_to_add = product["credits"]
+                is_synastry = "sinastria" in (product.get("name") or "").lower()
 
-        # Add credits
+        # Add credits (routed to the right balance)
         if credits_to_add > 0:
-            cur.execute("""
-                INSERT INTO user_credits (user_id, credits_balance, total_purchased, total_used)
-                VALUES (%s, %s, %s, 0)
-                ON CONFLICT (user_id) DO UPDATE SET
-                    credits_balance = user_credits.credits_balance + %s,
-                    total_purchased = user_credits.total_purchased + %s,
-                    updated_at = NOW()
-            """, (user_id, credits_to_add, credits_to_add, credits_to_add, credits_to_add))
+            if is_synastry:
+                cur.execute("""
+                    INSERT INTO user_credits (user_id, credits_balance, synastry_credits, total_purchased, total_used)
+                    VALUES (%s, 0, %s, %s, 0)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        synastry_credits = COALESCE(user_credits.synastry_credits, 0) + %s,
+                        total_purchased = user_credits.total_purchased + %s,
+                        updated_at = NOW()
+                """, (user_id, credits_to_add, credits_to_add, credits_to_add, credits_to_add))
+            else:
+                cur.execute("""
+                    INSERT INTO user_credits (user_id, credits_balance, total_purchased, total_used)
+                    VALUES (%s, %s, %s, 0)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        credits_balance = user_credits.credits_balance + %s,
+                        total_purchased = user_credits.total_purchased + %s,
+                        updated_at = NOW()
+                """, (user_id, credits_to_add, credits_to_add, credits_to_add, credits_to_add))
 
             # Check for duplicate transaction before inserting
             cur.execute(
@@ -95,10 +109,11 @@ def _fulfill_purchase(session_id: str, user_id: str, product_id: str) -> int:
                 (session_id, user_id),
             )
             if not cur.fetchone():
+                desc = 'Compra via Stripe (Sinastria)' if is_synastry else 'Compra via Stripe'
                 cur.execute("""
                     INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
-                    VALUES (%s, 'purchase', %s, 'Compra via Stripe', %s)
-                """, (user_id, credits_to_add, session_id))
+                    VALUES (%s, 'purchase', %s, %s, %s)
+                """, (user_id, credits_to_add, desc, session_id))
 
         conn.commit()
         return credits_to_add
