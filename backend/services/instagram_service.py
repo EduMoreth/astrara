@@ -146,17 +146,29 @@ def _upload_image_to_imgur(image_path: str) -> str:
 
 
 def _get_image_public_url(image_path: str) -> str:
-    """Get a publicly accessible URL for the image.
-    First tries Imgur upload, falls back to Railway static files."""
+    """Get a publicly accessible URL for the image via Imgur.
+
+    Meta cannot fetch images from the Railway URL (every attempt returns
+    error 9004 "Only photo or video can be accepted as media type"), so the
+    old silent fallback to the Railway URL only produced cryptic failures.
+    Fail fast with the actual cause instead."""
+    client_id = os.getenv("IMGUR_CLIENT_ID", "").strip()
+    if not client_id:
+        raise Exception(
+            "IMGUR_CLIENT_ID nao configurado no Railway. A Meta nao consegue ler "
+            "imagens hospedadas no Railway; configure a variavel IMGUR_CLIENT_ID "
+            "no servico backend e tente novamente."
+        )
     try:
         url = _upload_image_to_imgur(image_path)
         print(f"[INSTAGRAM] Image uploaded to Imgur: {url}")
         return url
     except Exception as e:
-        print(f"[INSTAGRAM] Imgur upload failed ({e}), falling back to Railway URL")
-        filename = os.path.basename(image_path)
-        backend_url = os.getenv("BACKEND_URL", "https://astrara-production.up.railway.app")
-        return f"{backend_url}/media/temp/{filename}"
+        print(f"[INSTAGRAM] Imgur upload failed: {e}")
+        raise Exception(
+            "Falha ao subir a imagem para o Imgur (IMGUR_CLIENT_ID invalido, "
+            "expirado ou limite de uso atingido). Verifique a variavel no Railway."
+        )
 
 
 def upload_image_to_meta(image_path: str, caption: str) -> str:
