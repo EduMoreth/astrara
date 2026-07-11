@@ -60,24 +60,23 @@ export default function AdminReportsPage() {
 
   const [reconciling, setReconciling] = useState(false)
 
+  const [reconcileActions, setReconcileActions] = useState<Array<{ session: string; db_status: string; stripe?: string; action?: string }>>([])
+
   async function runReconciliation() {
     setReconciling(true)
     try {
-      // 1) Remove phantom refunds (recorded without any Stripe refund behind them)
-      const r1 = await fetch(`${API_URL}/admin/api/refunds/cleanup-phantom`, {
+      // 1) Remove refund rows with no Stripe refund id at all
+      await fetch(`${API_URL}/admin/api/refunds/cleanup-phantom`, {
+        method: 'POST', headers: getAdminHeaders(),
+      }).catch(() => null)
+      // 2) Deep reconcile: each purchase compared against the REAL Stripe state
+      const res = await fetch(`${API_URL}/admin/api/purchases/stripe-reconcile`, {
         method: 'POST', headers: getAdminHeaders(),
       })
-      const d1 = r1.ok ? await r1.json() : { cleaned: 0 }
-      // 2) Verify every pending purchase against Stripe and fulfill the paid ones
-      const r2 = await fetch(`${API_URL}/admin/api/purchases/recover-pending`, {
-        method: 'POST', headers: getAdminHeaders(),
-      })
-      const d2 = r2.ok ? await r2.json() : null
-      if (!r1.ok && !r2.ok) throw new Error('failed')
-      toast.success(
-        `Reconciliacao concluida: ${d1.cleaned ?? 0} estorno(s) fantasma removido(s), ` +
-        `${d2?.recovered ?? 0} de ${d2?.total_pending ?? 0} compra(s) pendente(s) confirmada(s) no Stripe.`
-      )
+      if (!res.ok) throw new Error('failed')
+      const data = await res.json()
+      setReconcileActions(Array.isArray(data.actions) ? data.actions : [])
+      toast.success(`Reconciliacao com o Stripe: ${data.checked} compra(s) verificada(s), ${data.fixed} corrigida(s).`)
       loadReport()
     } catch {
       toast.error('Erro ao reconciliar com o Stripe. Tente novamente.')
@@ -210,6 +209,34 @@ export default function AdminReportsPage() {
       )}
 
       {/* Top products */}
+      {reconcileActions.length > 0 && (
+        <div className="glass-card p-6">
+          <h3 className="text-gold text-sm font-medium uppercase tracking-wider mb-4">Auditoria Stripe (ultima reconciliacao)</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[480px]">
+              <thead>
+                <tr className="text-muted uppercase tracking-wider border-b border-gold/10">
+                  <th className="text-left py-2">Sessao</th>
+                  <th className="text-left py-2">Banco</th>
+                  <th className="text-left py-2">Stripe</th>
+                  <th className="text-left py-2">Acao</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reconcileActions.map((a, i) => (
+                  <tr key={i} className="border-b border-white/[0.03]">
+                    <td className="py-2 text-muted font-mono">...{a.session}</td>
+                    <td className="py-2 text-stardust/80">{a.db_status}</td>
+                    <td className="py-2 text-stardust/80">{a.stripe}</td>
+                    <td className="py-2 text-stardust/80">{a.action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="glass-card p-6">
         <h3 className="text-stardust text-sm font-medium mb-4">Produtos mais vendidos</h3>
         {(report.top_products?.length ?? 0) > 0 ? (
