@@ -1239,10 +1239,13 @@ async def financial_report(
         date_params_p = [date_to]
         date_params_r = [date_to]
 
-    # Total revenue in period
+    # Total revenue in period — includes refunded sales (they WERE revenue;
+    # the refund is subtracted once below). Counting only 'completed' made a
+    # refunded sale vanish from gross while still subtracting the refund,
+    # producing an impossible negative net.
     cur.execute(f"""
         SELECT COALESCE(SUM(amount_cents), 0) as total FROM purchases p
-        WHERE status = 'completed' {date_filter_p}
+        WHERE status IN ('completed', 'refunded') {date_filter_p}
     """, date_params_p)
     total_revenue = cur.fetchone()["total"]
 
@@ -1261,7 +1264,7 @@ async def financial_report(
                COALESCE(SUM(amount_cents), 0) as revenue,
                COUNT(*) as transactions
         FROM purchases p
-        WHERE status = 'completed' {date_filter_p}
+        WHERE status IN ('completed', 'refunded') {date_filter_p}
         GROUP BY created_at::date
         ORDER BY day DESC
         LIMIT 365
@@ -1274,14 +1277,14 @@ async def financial_report(
                COALESCE(SUM(amount_cents), 0) as revenue,
                COUNT(*) as transactions
         FROM purchases p
-        WHERE status = 'completed' {date_filter_p}
+        WHERE status IN ('completed', 'refunded') {date_filter_p}
         GROUP BY DATE_TRUNC('month', created_at)
         ORDER BY month DESC
     """, date_params_p)
     monthly = cur.fetchall()
 
     # Counts
-    cur.execute(f"SELECT COUNT(*) as total FROM purchases p WHERE status = 'completed' {date_filter_p}", date_params_p)
+    cur.execute(f"SELECT COUNT(*) as total FROM purchases p WHERE status IN ('completed', 'refunded') {date_filter_p}", date_params_p)
     total_purchases = cur.fetchone()["total"]
     cur.execute(f"SELECT COUNT(*) as total FROM refunds r WHERE status = 'completed' {date_filter_r}", date_params_r)
     total_refund_count = cur.fetchone()["total"]
@@ -1298,7 +1301,7 @@ async def financial_report(
                COUNT(p.id) as sales,
                COALESCE(SUM(p.amount_cents), 0) as revenue
         FROM purchases p
-        WHERE p.status = 'completed' {date_filter_p}
+        WHERE p.status IN ('completed', 'refunded') {date_filter_p}
         GROUP BY p.product_type
         ORDER BY revenue DESC
         LIMIT 10
@@ -1576,6 +1579,108 @@ async def cleanup_phantom_refunds(request: Request, admin: str = Depends(verify_
                {"cleaned": len(cleaned)},
                request.client.host if request.client else None)
     return {"success": True, "cleaned": len(cleaned), "details": cleaned}
+
+
+@router.post("/purchases/stripe-reconcile")
+async def stripe_reconcile(request: Request, admin: str = Depends(verify_admin_token)):
+    """Deep reconciliation: compares each purchase in the DB against the REAL
+    state at Stripe and auto-fixes divergences:
+    - pending here + paid at Stripe (not refunded)   -> completed (fulfill credits)
+    - refunded here + NOT refunded at Stripe (paid)  -> restore to completed,
+      remove the bogus refund rows (revenue comes back)
+    - completed here + refunded at Stripe            -> mark refunded
+    Returns a per-item action list so the admin sees exactly what changed."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, user_id, stripe_payment_id, product_type, status, amount_cents
+        FROM purchases
+        WHERE stripe_payment_id IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 100
+    """)
+    purchases = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    actions = []
+    fixed = 0
+
+    for pu in purchases:
+        session_id = pu["stripe_payment_id"]
+        db_status = pu["status"]
+        item = {"session": session_id[-12:], "db_status": db_status}
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            paid = session.payment_status == "paid"
+            stripe_refunded = False
+            if paid and session.payment_intent:
+                refunds_list = stripe.Refund.list(payment_intent=session.payment_intent, limit=1)
+                stripe_refunded = len(refunds_list.data) > 0
+            item["stripe"] = ("refunded" if stripe_refunded else ("paid" if paid else session.payment_status))
+
+            if not paid:
+                item["action"] = "ignorada (nao paga no Stripe)"
+            elif db_status == "pending" and not stripe_refunded:
+                from routers.checkout import _fulfill_purchase
+                from services.stripe_service import verify_payment
+                meta = verify_payment(session_id)
+                uid = meta.get("user_id") or (str(pu["user_id"]) if pu.get("user_id") else None)
+                if uid:
+                    credits = _fulfill_purchase(session_id, uid, meta.get("product_id", ""))
+                    item["action"] = f"confirmada (creditos entregues: {credits})"
+                    fixed += 1
+                else:
+                    item["action"] = "paga mas sem usuario associado"
+            elif db_status == "refunded" and not stripe_refunded:
+                conn = get_connection()
+                cur = conn.cursor()
+                try:
+                    cur.execute("DELETE FROM refunds WHERE purchase_id = %s", (str(pu["id"]),))
+                    cur.execute("UPDATE purchases SET status = 'completed' WHERE id = %s", (str(pu["id"]),))
+                    conn.commit()
+                    item["action"] = "estorno inexistente no Stripe removido; venda restaurada"
+                    fixed += 1
+                except Exception as e:
+                    conn.rollback()
+                    print(f"stripe-reconcile restore error: {e}")
+                    item["action"] = "erro ao restaurar"
+                finally:
+                    cur.close()
+                    conn.close()
+            elif db_status == "completed" and stripe_refunded:
+                conn = get_connection()
+                cur = conn.cursor()
+                try:
+                    cur.execute("UPDATE purchases SET status = 'refunded' WHERE id = %s", (str(pu["id"]),))
+                    cur.execute("""
+                        INSERT INTO refunds (purchase_id, user_id, admin_email, amount_cents, reason, stripe_refund_id, status)
+                        SELECT %s, %s, %s, %s, 'Reconciliacao: estornado no Stripe', %s, 'completed'
+                        WHERE NOT EXISTS (SELECT 1 FROM refunds WHERE purchase_id = %s)
+                    """, (str(pu["id"]), str(pu["user_id"]) if pu.get("user_id") else None,
+                          admin, pu.get("amount_cents", 0), refunds_list.data[0].id, str(pu["id"])))
+                    conn.commit()
+                    item["action"] = "marcada como estornada (estorno real no Stripe)"
+                    fixed += 1
+                except Exception as e:
+                    conn.rollback()
+                    print(f"stripe-reconcile mark-refunded error: {e}")
+                    item["action"] = "erro ao marcar estorno"
+                finally:
+                    cur.close()
+                    conn.close()
+            else:
+                item["action"] = "ok (sem divergencia)"
+        except Exception as e:
+            print(f"stripe-reconcile error for {session_id}: {e}")
+            item["stripe"] = "erro"
+            item["action"] = "erro ao consultar o Stripe"
+        actions.append(item)
+
+    log_action(admin, "stripe_reconcile", "purchase", "",
+               {"checked": len(actions), "fixed": fixed},
+               request.client.host if request.client else None)
+    return {"success": True, "checked": len(actions), "fixed": fixed, "actions": actions}
 
 
 @router.post("/purchases/recover-pending")
