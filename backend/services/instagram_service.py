@@ -5,6 +5,34 @@ import time
 
 INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
 GRAPH_URL = "https://graph.facebook.com/v21.0"
+IG_GRAPH_URL = "https://graph.instagram.com/v21.0"
+
+
+def is_ig_login_token(token: str) -> bool:
+    """Tokens from the NEW 'Instagram API with Instagram Login' start with IG
+    (e.g. IGAA...). They talk to graph.instagram.com; legacy Facebook-login
+    tokens (EAAG...) talk to graph.facebook.com."""
+    return bool(token) and token.startswith("IG")
+
+
+def resolve_publish_target(token: str) -> tuple:
+    """Return (api_base, ig_account_id) for the given token type.
+    New IG-login tokens discover the account id via /me; legacy tokens use the
+    configured INSTAGRAM_ACCOUNT_ID."""
+    if is_ig_login_token(token):
+        resp = requests.get(
+            f"{IG_GRAPH_URL}/me",
+            params={"fields": "user_id,username", "access_token": token},
+            timeout=30,
+        )
+        data = resp.json()
+        if "error" in data:
+            raise Exception(f"Instagram /me error: {data['error'].get('message', 'invalid token')}")
+        account_id = data.get("user_id") or data.get("id")
+        if not account_id:
+            raise Exception("Instagram /me nao retornou o id da conta")
+        return IG_GRAPH_URL, str(account_id)
+    return GRAPH_URL, INSTAGRAM_ACCOUNT_ID
 
 
 def get_access_token() -> str:
@@ -43,14 +71,36 @@ def save_access_token(token: str) -> None:
 
 def refresh_meta_token() -> dict:
     """Exchange the current long-lived token for a fresh one (extends the ~60-day
-    expiry). Requires META_APP_ID + META_APP_SECRET. Persists to system_config."""
-    app_id = os.getenv("META_APP_ID", "")
-    app_secret = os.getenv("META_APP_SECRET", "")
+    expiry). New IG-login tokens (IGAA...) refresh directly on graph.instagram.com
+    without any app secret; legacy tokens need META_APP_ID + META_APP_SECRET.
+    Persists to system_config."""
     current = get_access_token()
-    if not app_id or not app_secret:
-        return {"success": False, "error": "META_APP_ID/META_APP_SECRET nao configurados"}
     if not current:
         return {"success": False, "error": "Nenhum token atual para renovar"}
+
+    # New Instagram-login token: simple self-refresh (token must be >24h old)
+    if is_ig_login_token(current):
+        try:
+            resp = requests.get(
+                f"{IG_GRAPH_URL.rsplit('/', 1)[0]}/refresh_access_token",
+                params={"grant_type": "ig_refresh_token", "access_token": current},
+                timeout=30,
+            )
+            data = resp.json()
+            new_token = data.get("access_token")
+            if not new_token:
+                print(f"IG token refresh failed: {data.get('error')}")
+                return {"success": False, "error": "Instagram recusou a renovacao (token pode estar expirado ou com menos de 24h)"}
+            save_access_token(new_token)
+            return {"success": True, "expires_in": data.get("expires_in")}
+        except Exception as e:
+            print(f"IG token refresh error: {e}")
+            return {"success": False, "error": "Erro de rede ao renovar token"}
+
+    app_id = os.getenv("META_APP_ID", "")
+    app_secret = os.getenv("META_APP_SECRET", "")
+    if not app_id or not app_secret:
+        return {"success": False, "error": "META_APP_ID/META_APP_SECRET nao configurados"}
     try:
         resp = requests.get(
             f"{GRAPH_URL}/oauth/access_token",
@@ -112,13 +162,16 @@ def _get_image_public_url(image_path: str) -> str:
 def upload_image_to_meta(image_path: str, caption: str) -> str:
     """Step 1: Create media container with image URL."""
     access_token = get_access_token()
-    if not INSTAGRAM_ACCOUNT_ID or not access_token:
+    if not access_token:
+        raise Exception("Instagram credentials not configured (token ausente)")
+    api_base, account_id = resolve_publish_target(access_token)
+    if not account_id:
         raise Exception("Instagram credentials not configured (INSTAGRAM_ACCOUNT_ID / META_ACCESS_TOKEN)")
 
     image_url = _get_image_public_url(image_path)
 
     response = requests.post(
-        f"{GRAPH_URL}/{INSTAGRAM_ACCOUNT_ID}/media",
+        f"{api_base}/{account_id}/media",
         data={
             "image_url": image_url,
             "caption": caption,
@@ -141,12 +194,13 @@ def upload_image_to_meta(image_path: str, caption: str) -> str:
 
 def publish_media_container(creation_id: str) -> str:
     access_token = get_access_token()
+    api_base, account_id = resolve_publish_target(access_token)
     """Step 2: Publish the media container.
     May need to wait for Meta to process the image."""
     max_retries = 5
     for attempt in range(max_retries):
         response = requests.post(
-            f"{GRAPH_URL}/{INSTAGRAM_ACCOUNT_ID}/media_publish",
+            f"{api_base}/{account_id}/media_publish",
             data={
                 "creation_id": creation_id,
                 "access_token": access_token,
@@ -172,9 +226,10 @@ def publish_media_container(creation_id: str) -> str:
 
 def get_post_permalink(post_id: str) -> str:
     access_token = get_access_token()
+    api_base = IG_GRAPH_URL if is_ig_login_token(access_token) else GRAPH_URL
     """Get the permanent link for a published post."""
     response = requests.get(
-        f"{GRAPH_URL}/{post_id}",
+        f"{api_base}/{post_id}",
         params={
             "fields": "permalink",
             "access_token": access_token,

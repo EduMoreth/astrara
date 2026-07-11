@@ -187,13 +187,13 @@ export default function AdminInstagramPage() {
         {/* Meta token renewal — no redeploy needed */}
         <div className="mt-5 pt-4 border-t border-gold/10">
           <p className="text-muted text-xs mb-2">
-            Token da Meta expirado (erro 190)? Gere um novo token de longa duracao e cole aqui —
-            passa a valer imediatamente, sem redeploy. Com META_APP_ID/META_APP_SECRET configurados,
-            o sistema renova sozinho toda semana.
+            Token expirado (erro 190)? No painel Meta Developers: Casos de uso &rarr; Personalizar (API do
+            Instagram) &rarr; &quot;2. Gerar tokens de acesso&quot; &rarr; conecte a conta e clique em &quot;Gerar token&quot;
+            (IGAA...). Cole aqui — vale na hora, sem redeploy, e o sistema renova sozinho toda semana.
           </p>
           <div className="flex gap-2 flex-wrap">
             <input value={newToken} onChange={e => setNewToken(e.target.value)}
-              placeholder="Colar novo token Meta (EAAG...)" className="input-field flex-1 min-w-[260px] text-xs" />
+              placeholder="Colar token do Instagram (IGAA...) ou da Meta (EAAG...)" className="input-field flex-1 min-w-[260px] text-xs" />
             <button onClick={handleSaveToken} disabled={savingToken} className="btn-primary text-xs disabled:opacity-50">
               {savingToken ? 'Validando...' : 'Salvar token'}
             </button>
