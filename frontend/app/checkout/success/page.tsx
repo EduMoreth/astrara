@@ -15,6 +15,17 @@ function CheckoutSuccessContent() {
   const [errorMsg, setErrorMsg] = useState('')
   const isNative = Capacitor.isNativePlatform()
 
+  function returnPath(): string {
+    try {
+      const saved = localStorage.getItem('astrara_checkout_return')
+      if (saved === '/sinastria' || saved === '/chart') {
+        localStorage.removeItem('astrara_checkout_return')
+        return saved
+      }
+    } catch { /* ignore */ }
+    return '/chart'
+  }
+
   useEffect(() => {
     if (!sessionId) {
       setStatus('error')
@@ -40,7 +51,7 @@ function CheckoutSuccessContent() {
         // On web (not in-app browser), auto-redirect after a short delay
         if (!isNative) {
           setTimeout(() => {
-            router.push(`/chart?session_id=${sessionId}`)
+            router.push(`${returnPath()}?session_id=${sessionId}`)
           }, 3000)
         }
       })
@@ -54,7 +65,7 @@ function CheckoutSuccessContent() {
         // Still redirect — credits will be added by webhook
         if (!isNative) {
           setTimeout(() => {
-            router.push(`/chart?session_id=${sessionId}`)
+            router.push(`${returnPath()}?session_id=${sessionId}`)
           }, 3000)
         }
       })
@@ -71,7 +82,7 @@ function CheckoutSuccessContent() {
   }
 
   const handleGoToChart = () => {
-    router.push(`/chart${sessionId ? `?session_id=${sessionId}` : ''}`)
+    router.push(`${returnPath()}${sessionId ? `?session_id=${sessionId}` : ''}`)
   }
 
   if (status === 'processing') {
