@@ -88,9 +88,9 @@ export const deleteUser = (id: string) =>
   adminRequest(`/admin/api/users/${id}`, { method: 'DELETE' })
 export const banUser = (id: string, reason: string) =>
   adminRequest(`/admin/api/users/${id}/ban`, { method: 'POST', body: JSON.stringify({ reason }) })
-export const manageCredits = (id: string, type: string, amount: number, reason: string) =>
+export const manageCredits = (id: string, type: string, amount: number, reason: string, kind: string = 'standard') =>
   adminRequest(`/admin/api/users/${id}/credits`, {
-    method: 'POST', body: JSON.stringify({ type, amount, reason })
+    method: 'POST', body: JSON.stringify({ type, amount, reason, kind })
   })
 
 // ── Products ──────────────────────────────────────────

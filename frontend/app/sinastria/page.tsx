@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -22,7 +22,6 @@ interface SynastryResult {
   chart_b: { positions: Record<string, { sign: string; deg: number }>; houses: Array<{ sign: string; deg: number }>; aspects: unknown[] }
   inter_aspects: Array<{ p1: string; p2: string; aspect: string; orbit: number }>
   scores: { overall: number; dimensions: Record<string, DimensionScore> }
-  credits_cost: number
 }
 
 const ASPECT_LABELS: Record<string, string> = {
@@ -47,6 +46,7 @@ function SinastriaContent() {
   const [downloading, setDownloading] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [product, setProduct] = useState<{ id: string | null; name: string; price_cents: number } | null>(null)
+  const autoResubmitted = useRef(false)
 
   useEffect(() => {
     setIsLoggedIn(!!localStorage.getItem('astrara_token'))
@@ -56,7 +56,7 @@ function SinastriaContent() {
       .then(data => { if (data && typeof data.price_cents === 'number') setProduct(data) })
       .catch(() => {})
 
-    // Restore a previous result (e.g. returning from Stripe checkout)
+    // Restore a previous PAID result (survives the Stripe round-trip)
     try {
       const saved = sessionStorage.getItem('astrara_synastry_result')
       const savedNames = sessionStorage.getItem('astrara_synastry_names')
@@ -70,43 +70,110 @@ function SinastriaContent() {
       }
     } catch { /* ignore */ }
 
-    // Returning from payment: verify the session so credits land immediately
+    // Returning from payment: verify the session, then auto-resubmit the pair
+    // the user filled before checkout (their synastry credit just landed).
     const sessionId = params.get('session_id')
     const token = localStorage.getItem('astrara_token')
-    if (sessionId && token) {
+    if (sessionId && token && !autoResubmitted.current) {
+      autoResubmitted.current = true
       fetch(`${API_URL}/checkout/verify/${sessionId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            toast.success('Pagamento confirmado! Clique em "Baixar analise completa".')
-            window.history.replaceState({}, '', '/sinastria')
-          }
+        .catch(() => ({}))
+        .finally(() => {
+          window.history.replaceState({}, '', '/sinastria')
+          try {
+            const savedForm = sessionStorage.getItem('astrara_synastry_form')
+            if (savedForm) {
+              const form = JSON.parse(savedForm)
+              if (form?.person_a && form?.person_b) {
+                toast.success('Pagamento confirmado! Gerando sua sinastria...')
+                handleSubmit(form.person_a, form.person_b)
+              }
+            }
+          } catch { /* ignore */ }
         })
-        .catch(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  async function startCheckout(token: string) {
+    if (!product?.id) {
+      toast.error('Produto Sinastria nao configurado. Contate o suporte.')
+      return
+    }
+    try {
+      const res = await fetch(`${API_URL}/checkout/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ product_id: product.id }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(typeof err.detail === 'string' ? err.detail : 'Erro ao iniciar pagamento')
+      }
+      const data = await res.json()
+      if (data.checkout_url) {
+        if (data.session_id) localStorage.setItem('astrara_payment_session', data.session_id)
+        try { localStorage.setItem('astrara_checkout_return', '/sinastria') } catch { /* ignore */ }
+        const { openExternalUrl } = await import('@/lib/navigation')
+        await openExternalUrl(data.checkout_url)
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao iniciar pagamento')
+    }
+  }
+
   async function handleSubmit(personA: SynastryPersonData, personB: SynastryPersonData) {
+    const token = localStorage.getItem('astrara_token')
+    if (!token) {
+      // Keep what the user typed so the flow continues after signup
+      try {
+        sessionStorage.setItem('astrara_synastry_form', JSON.stringify({ person_a: personA, person_b: personB }))
+      } catch { /* ignore */ }
+      sessionStorage.setItem('astrara_intent', 'buy_sinastria')
+      toast.error('A Sinastria e um produto premium. Crie sua conta para continuar.')
+      router.push('/auth/register')
+      return
+    }
+
     setLoading(true)
     try {
       const res = await fetch(`${API_URL}/chart/synastry`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ person_a: personA, person_b: personB }),
       })
+
+      if (res.status === 401) {
+        localStorage.removeItem('astrara_token')
+        router.push('/auth/login')
+        return
+      }
+
+      if (res.status === 402) {
+        // Premium: save the pair, send to Stripe; on return we auto-resubmit
+        try {
+          sessionStorage.setItem('astrara_synastry_form', JSON.stringify({ person_a: personA, person_b: personB }))
+        } catch { /* ignore */ }
+        toast.info('A Sinastria e um produto premium. Redirecionando para o pagamento...')
+        await startCheckout(token)
+        return
+      }
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(typeof err.detail === 'string' ? err.detail : 'Erro ao calcular a sinastria')
       }
+
       const data: SynastryResult = await res.json()
       setResult(data)
       setNames({ a: personA.name, b: personB.name })
       try {
         sessionStorage.setItem('astrara_synastry_result', JSON.stringify(data))
         sessionStorage.setItem('astrara_synastry_names', JSON.stringify({ a: personA.name, b: personB.name }))
+        sessionStorage.removeItem('astrara_synastry_form')
       } catch { /* storage full: continue without cache */ }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao calcular a sinastria')
@@ -115,19 +182,16 @@ function SinastriaContent() {
     }
   }
 
-  async function handleUnlock() {
+  async function handleDownloadPdf() {
     if (!result) return
-
     const token = localStorage.getItem('astrara_token')
     if (!token) {
-      sessionStorage.setItem('astrara_intent', 'buy_sinastria')
-      toast.error('Crie uma conta para desbloquear a analise completa.')
-      router.push('/auth/register')
+      router.push('/auth/login')
       return
     }
 
     setDownloading(true)
-    toast.info('Gerando analise de sinastria com IA... Isso pode levar ate 1 minuto.')
+    toast.info('Gerando a analise completa com IA... Isso pode levar ate 1 minuto.')
     try {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 180000)
@@ -142,32 +206,6 @@ function SinastriaContent() {
         signal: controller.signal,
       })
       clearTimeout(timeoutId)
-
-      if (res.status === 402) {
-        // No credits — send to Stripe checkout for the Sinastria product
-        if (!product?.id) {
-          toast.error('Produto Sinastria nao configurado. Contate o suporte.')
-          return
-        }
-        const checkoutRes = await fetch(`${API_URL}/checkout/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ product_id: product.id }),
-        })
-        if (!checkoutRes.ok) {
-          const err = await checkoutRes.json().catch(() => ({}))
-          throw new Error(typeof err.detail === 'string' ? err.detail : 'Erro ao iniciar pagamento')
-        }
-        const data = await checkoutRes.json()
-        if (data.checkout_url) {
-          if (data.session_id) localStorage.setItem('astrara_payment_session', data.session_id)
-          // Return to /sinastria (not /chart) after payment
-          try { localStorage.setItem('astrara_checkout_return', '/sinastria') } catch { /* ignore */ }
-          const { openExternalUrl } = await import('@/lib/navigation')
-          await openExternalUrl(data.checkout_url)
-        }
-        return
-      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Erro ao gerar analise' }))
@@ -213,13 +251,39 @@ function SinastriaContent() {
 
       <div className="relative z-10 px-4 sm:px-6 py-6 sm:py-12 max-w-6xl mx-auto">
         <AnimatePresence mode="wait">
-          {!result && (
+          {loading && (
+            <motion.div key="loading"
+              className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-cosmos/90 backdrop-blur-sm"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.svg viewBox="0 0 200 200" className="w-40 h-40"
+                animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}>
+                <circle cx="100" cy="100" r="85" fill="none" stroke="rgba(201,169,110,0.3)" strokeWidth="1.5" />
+                <circle cx="100" cy="100" r="60" fill="none" stroke="rgba(123,94,167,0.3)" strokeWidth="1" />
+              </motion.svg>
+              <motion.p className="text-gold mt-8 text-lg font-display"
+                animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 2, repeat: Infinity }}>
+                Cruzando os mapas...
+              </motion.p>
+            </motion.div>
+          )}
+
+          {!result && !loading && (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {/* Premium badge */}
+              <div className="text-center mb-6">
+                <span className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-gold border border-gold/30 rounded-full px-4 py-1.5">
+                  &#10024; Produto Premium — {priceLabel}
+                </span>
+                <p className="text-muted text-xs mt-3 max-w-md mx-auto">
+                  A Sinastria inclui os dois mapas astrais, a medicao de afinidade em 6 dimensoes
+                  e a analise completa por IA em PDF. Liberada apos o pagamento.
+                </p>
+              </div>
               <SynastryForm onSubmit={handleSubmit} loading={loading} />
             </motion.div>
           )}
 
-          {result && (
+          {result && !loading && (
             <motion.div key="result" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }}>
               <button
                 onClick={() => {
@@ -314,19 +378,19 @@ function SinastriaContent() {
                 )}
               </div>
 
-              {/* CTA */}
+              {/* PDF download — already included in the purchase */}
               <motion.div className="glass-card p-8 text-center border-gold/20 max-w-2xl mx-auto"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
                 <div className="text-3xl mb-3">&#128152;</div>
                 <p className="text-stardust/80 text-lg font-display mb-4">
-                  Quer entender o que esses aspectos significam para o relacionamento?
+                  Sua analise completa esta incluida
                 </p>
                 <p className="text-muted text-sm mb-6">
-                  Receba a analise completa da sinastria: cada aspecto entre os planetas dos dois mapas
-                  interpretado por IA, com desafios, potenciais e conselhos para o casal. Inclui PDF para download.
+                  Baixe o PDF com a interpretacao de cada aspecto entre os dois mapas:
+                  desafios, potenciais e conselhos para o casal, gerados por IA.
                 </p>
-                <button onClick={handleUnlock} disabled={downloading} className="btn-primary text-sm disabled:opacity-50">
-                  {downloading ? 'Gerando analise...' : `Baixar analise completa — ${priceLabel} →`}
+                <button onClick={handleDownloadPdf} disabled={downloading} className="btn-primary text-sm disabled:opacity-50">
+                  {downloading ? 'Gerando analise...' : 'Baixar analise completa em PDF'}
                 </button>
               </motion.div>
             </motion.div>

@@ -424,6 +424,7 @@ class CreditRequest(BaseModel):
     type: str  # 'add' or 'remove'
     amount: int
     reason: str
+    kind: str = "standard"  # 'standard' (interpretacao) or 'synastry' (sinastria)
 
 
 @router.post("/users/{user_id}/credits")
@@ -438,6 +439,10 @@ async def manage_credits(user_id: str, data: CreditRequest, request: Request,
     cur = conn.cursor()
 
     signed = data.amount if data.type == "add" else -data.amount
+    if data.kind not in ("standard", "synastry"):
+        raise HTTPException(status_code=400, detail="Tipo de credito invalido. Use 'standard' ou 'synastry'.")
+    # Column is chosen from an allowlist above — never from raw input
+    column = "synastry_credits" if data.kind == "synastry" else "credits_balance"
 
     try:
         # Ensure user_credits row exists
@@ -450,24 +455,25 @@ async def manage_credits(user_id: str, data: CreditRequest, request: Request,
         if data.type == "add":
             # Courtesy/manual grant: only the balance changes. It is NOT a purchase,
             # so total_purchased (the "sold" metric) must not be inflated.
-            cur.execute("""
-                UPDATE user_credits SET credits_balance = credits_balance + %s,
+            cur.execute(f"""
+                UPDATE user_credits SET {column} = COALESCE({column}, 0) + %s,
                                         updated_at = NOW()
                 WHERE user_id = %s
             """, (data.amount, user_id))
         else:
             # Manual removal/clawback: guarded decrement, not counted as consumption.
-            cur.execute("""
-                UPDATE user_credits SET credits_balance = GREATEST(credits_balance - %s, 0),
+            cur.execute(f"""
+                UPDATE user_credits SET {column} = GREATEST(COALESCE({column}, 0) - %s, 0),
                                         updated_at = NOW()
                 WHERE user_id = %s
             """, (data.amount, user_id))
 
+        kind_label = " [sinastria]" if data.kind == "synastry" else ""
         cur.execute("""
             INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
             VALUES (%s, %s, %s, %s, %s)
         """, (user_id, "manual_add" if data.type == "add" else "manual_remove", signed,
-              f"{data.reason} (admin: {admin})", admin))
+              f"{data.reason}{kind_label} (admin: {admin})", admin))
 
         conn.commit()
     except Exception as e:
@@ -479,7 +485,7 @@ async def manage_credits(user_id: str, data: CreditRequest, request: Request,
         conn.close()
 
     log_action(admin, "manage_credits", "user", user_id,
-               {"type": data.type, "amount": data.amount, "reason": data.reason},
+               {"type": data.type, "kind": data.kind, "amount": data.amount, "reason": data.reason},
                request.client.host if request.client else None)
     return {"success": True}
 

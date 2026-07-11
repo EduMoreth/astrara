@@ -214,6 +214,15 @@ def init_db():
         );
     """)
 
+    # Synastry is a premium product with its OWN credit type: interpretation
+    # credits must not unlock synastry and vice-versa. Additive, non-destructive.
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE user_credits ADD COLUMN IF NOT EXISTS synastry_credits INTEGER DEFAULT 0;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
+    """)
+
     # ── Credit Transactions ──────────────────────────────
     cur.execute("""
         CREATE TABLE IF NOT EXISTS credit_transactions (

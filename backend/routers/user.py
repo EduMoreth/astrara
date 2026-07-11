@@ -204,10 +204,11 @@ async def get_user_credits(user: dict = Depends(get_current_user)):
     conn.close()
 
     if not row:
-        return {"credits_balance": 0, "total_purchased": 0, "total_used": 0}
+        return {"credits_balance": 0, "synastry_credits": 0, "total_purchased": 0, "total_used": 0}
 
     return {
         "credits_balance": row["credits_balance"],
+        "synastry_credits": row.get("synastry_credits") or 0,
         "total_purchased": row["total_purchased"],
         "total_used": row["total_used"],
     }

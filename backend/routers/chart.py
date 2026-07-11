@@ -399,20 +399,20 @@ class SynastryPdfRequest(BaseModel):
     person_b: SynastryPdfPerson
 
 
-def _synastry_credits_cost() -> int:
-    """Credits consumed per synastry analysis (system_config, default 2)."""
-    try:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT value FROM system_config WHERE key = 'credits_per_synastry'")
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        if row and str(row["value"]).strip().isdigit():
-            return max(1, int(row["value"]))
-    except Exception as e:
-        print(f"Synastry cost config error: {e}")
-    return 2
+def _has_synastry_entitlement(cur, user_id: str, pair_hash: str) -> bool:
+    """True if this user already paid for this exact pair: either the analysis
+    is cached, or a synastry-credit consumption is recorded for the pair."""
+    cur.execute("""
+        SELECT 1 FROM chart_interpretations
+        WHERE user_id = %s AND positions_hash = %s
+    """, (user_id, pair_hash))
+    if cur.fetchone():
+        return True
+    cur.execute("""
+        SELECT 1 FROM credit_transactions
+        WHERE user_id = %s AND type = 'use' AND reference_id = %s
+    """, (user_id, f"synastry:{pair_hash}"))
+    return cur.fetchone() is not None
 
 
 def _synastry_hash(positions_a: dict, positions_b: dict) -> str:
@@ -454,8 +454,14 @@ async def get_synastry_product():
 @router.post("/synastry")
 async def generate_synastry(data: SynastryRequest, request: Request = None,
                             authorization: Optional[str] = Header(None)):
-    """Generate both natal charts and the free synastry preview:
-    inter-chart aspects + affinity scores. The deep AI analysis (PDF) is paid."""
+    """Synastry is a PREMIUM product: nothing (not even the wheels) is shown
+    before payment. Requires login + 1 synastry credit per pair. Re-running the
+    same pair the user already paid for does not consume again (entitlement)."""
+    user = get_optional_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login necessario para a Sinastria")
+    user_id = user["sub"]
+
     charts = {}
     for label, person in (("a", data.person_a), ("b", data.person_b)):
         try:
@@ -479,6 +485,36 @@ async def generate_synastry(data: SynastryRequest, request: Request = None,
     synastry = compute_synastry(
         charts["a"]["positions"], charts["b"]["positions"]
     )
+
+    # ── Premium gate: entitlement for this pair, or consume 1 synastry credit ──
+    pair_hash = _synastry_hash(charts["a"]["positions"], charts["b"]["positions"])
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        if not _has_synastry_entitlement(cur, user_id, pair_hash):
+            cur.execute("""
+                UPDATE user_credits
+                SET synastry_credits = COALESCE(synastry_credits, 0) - 1,
+                    total_used = total_used + 1,
+                    updated_at = NOW()
+                WHERE user_id = %s AND COALESCE(synastry_credits, 0) >= 1
+                RETURNING synastry_credits
+            """, (user_id,))
+            updated = cur.fetchone()
+            if not updated:
+                conn.rollback()
+                raise HTTPException(
+                    status_code=402,
+                    detail="A Sinastria e um produto premium. Adquira para desbloquear a analise completa.",
+                )
+            cur.execute("""
+                INSERT INTO credit_transactions (user_id, type, amount, description, reference_id)
+                VALUES (%s, 'use', -1, 'Sinastria (analise de casal)', %s)
+            """, (user_id, f"synastry:{pair_hash}"))
+            conn.commit()
+    finally:
+        cur.close()
+        conn.close()
 
     # Log both generations for admin metrics (best-effort)
     try:
@@ -509,7 +545,6 @@ async def generate_synastry(data: SynastryRequest, request: Request = None,
         "chart_b": {k: charts["b"][k] for k in ("positions", "houses", "aspects")},
         "inter_aspects": synastry["inter_aspects"],
         "scores": synastry["scores"],
-        "credits_cost": _synastry_credits_cost(),
     }
 
 
@@ -556,30 +591,16 @@ async def generate_synastry_pdf_endpoint(data: SynastryPdfRequest,
             headers={"Content-Disposition": f'attachment; filename="astrara-sinastria-{safe}.pdf"'},
         )
 
-    # ── New analysis: consume credits atomically ──
-    cost = _synastry_credits_cost()
-    cur.execute("""
-        UPDATE user_credits
-        SET credits_balance = credits_balance - %s,
-            total_used = total_used + %s,
-            updated_at = NOW()
-        WHERE user_id = %s AND credits_balance >= %s
-        RETURNING credits_balance
-    """, (cost, cost, user_id, cost))
-    updated = cur.fetchone()
-    if not updated:
-        conn.rollback()
+    # ── PDF requires the pair entitlement (paid at /chart/synastry).
+    # The credit was already consumed when the analysis was unlocked — the PDF
+    # itself never charges again. ──
+    if not _has_synastry_entitlement(cur, user_id, pair_hash):
         cur.close()
         conn.close()
         raise HTTPException(
             status_code=402,
-            detail=f"A sinastria consome {cost} credito(s). Adquira o produto Sinastria para desbloquear.",
+            detail="A Sinastria e um produto premium. Adquira para desbloquear a analise completa.",
         )
-    cur.execute("""
-        INSERT INTO credit_transactions (user_id, type, amount, description)
-        VALUES (%s, 'use', %s, 'Analise de sinastria (PDF)')
-    """, (user_id, -cost))
-    conn.commit()
 
     # Generate the AI analysis
     interpretation_text = generate_synastry_interpretation(

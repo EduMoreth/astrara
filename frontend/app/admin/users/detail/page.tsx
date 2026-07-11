@@ -21,6 +21,7 @@ function AdminUserDetailContent() {
   const [editName, setEditName] = useState('')
   const [editPlan, setEditPlan] = useState('')
   const [creditType, setCreditType] = useState('add')
+  const [creditKind, setCreditKind] = useState('standard')
   const [creditAmount, setCreditAmount] = useState(0)
   const [creditReason, setCreditReason] = useState('')
   const [showCreditModal, setShowCreditModal] = useState(false)
@@ -54,7 +55,7 @@ function AdminUserDetailContent() {
 
   async function handleCredits() {
     try {
-      await manageCredits(userId, creditType, creditAmount, creditReason)
+      await manageCredits(userId, creditType, creditAmount, creditReason, creditKind)
       toast.success('Creditos atualizados')
       setShowCreditModal(false)
       const res = await getUser(userId)
@@ -123,6 +124,7 @@ function AdminUserDetailContent() {
         <div className="space-y-4">
           <div className="glass-card p-6 flex gap-8">
             <div><span className="text-muted text-xs">Saldo</span><div className="text-2xl text-gold font-display">{credits.credits_balance}</div></div>
+            <div><span className="text-muted text-xs">Sinastria</span><div className="text-2xl text-violet font-display">{credits.synastry_credits ?? 0}</div></div>
             <div><span className="text-muted text-xs">Comprados</span><div className="text-xl text-stardust">{credits.total_purchased}</div></div>
             <div><span className="text-muted text-xs">Usados</span><div className="text-xl text-stardust">{credits.total_used}</div></div>
             <button onClick={() => setShowCreditModal(true)} className="btn-primary text-sm ml-auto self-center">Gerenciar</button>
@@ -134,6 +136,10 @@ function AdminUserDetailContent() {
               <div className="flex gap-3">
                 <button onClick={() => setCreditType('add')} className={`px-3 py-1 text-sm rounded ${creditType === 'add' ? 'bg-gold text-cosmos' : 'text-muted border border-gold/20'}`}>Adicionar</button>
                 <button onClick={() => setCreditType('remove')} className={`px-3 py-1 text-sm rounded ${creditType === 'remove' ? 'bg-[#E74C3C] text-white' : 'text-muted border border-gold/20'}`}>Remover</button>
+                <select value={creditKind} onChange={e => setCreditKind(e.target.value)} className="input-field !py-1 text-sm">
+                  <option value="standard">Interpretacao</option>
+                  <option value="synastry">Sinastria</option>
+                </select>
               </div>
               <input type="number" value={creditAmount} onChange={e => setCreditAmount(Number(e.target.value))} placeholder="Quantidade" className="input-field w-full" />
               <input value={creditReason} onChange={e => setCreditReason(e.target.value)} placeholder="Motivo" className="input-field w-full" />
